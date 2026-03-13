@@ -288,32 +288,37 @@ canvas#canvas {
 })();
 </script>
 
-{{{ SCRIPT }}}
-
 <script>
-// Hide loading screen when Module is ready
-if (typeof Module !== 'undefined') {
-    var origRun = Module.onRuntimeInitialized;
-    Module.onRuntimeInitialized = function() {
-        if (origRun) origRun();
+// Module config MUST be set BEFORE the Emscripten script loads
+var Module = {
+    canvas: (function() { return document.getElementById('canvas'); })(),
+    onRuntimeInitialized: function() {
         document.getElementById('loading').classList.add('hidden');
         setTimeout(function() {
             document.getElementById('loading').style.display = 'none';
         }, 400);
-    };
-}
-
-// Update progress bar
-if (typeof Module !== 'undefined') {
-    Module.setStatus = function(text) {
+    },
+    setStatus: function(text) {
+        if (text === '') {
+            // Final status — loading complete
+            document.getElementById('progress-fill').style.width = '100%';
+            return;
+        }
         var m = text.match(/(\d+)\/(\d+)/);
         if (m) {
             var pct = (parseInt(m[1]) / parseInt(m[2])) * 100;
             document.getElementById('progress-fill').style.width = pct + '%';
         }
-    };
-}
+    },
+    monitorRunDependencies: function(left) {
+        if (left === 0) {
+            document.getElementById('progress-fill').style.width = '100%';
+        }
+    }
+};
 </script>
+
+{{{ SCRIPT }}}
 
 </body>
 </html>
