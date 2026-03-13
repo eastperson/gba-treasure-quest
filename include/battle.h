@@ -65,10 +65,14 @@ typedef struct {
     char          message[64];
     bool          player_defending;
     Inventory    *inv;   /* pointer to player inventory for battle items */
+    Party        *party; /* pointer to full party for display */
+    uint8_t       boss_turn_count; /* tracks boss AI turn patterns */
+    bool          hero_stunned;    /* true if hero is stunned this turn */
+    uint8_t       island;         /* current island for scaling */
 } BattleContext;
 
 /* ── Functions ────────────────────────────────────────── */
-void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *inv);
+void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *inv, Party *party, uint8_t island);
 void battle_update(BattleContext *bc, Character *hero);
 void battle_render(BattleContext *bc, Character *hero);
 int  battle_calc_damage(int atk, int def);

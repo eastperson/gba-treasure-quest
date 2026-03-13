@@ -36,6 +36,7 @@ bool            inventory_add(Inventory *inv, int item_id, int count);
 void            inventory_remove(Inventory *inv, int slot_index, int count);
 bool            inventory_use(Inventory *inv, int slot_index, Character *target);
 const ItemData *inventory_get_item_data(int item_id);
+bool            inventory_equip(Inventory *inv, Character *ch, int slot_index);
 void            inventory_render(Inventory *inv, int cursor_pos);
 
 #endif /* INVENTORY_H */

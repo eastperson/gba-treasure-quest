@@ -37,6 +37,8 @@ typedef struct {
     uint8_t  level;
     uint16_t exp;
     uint8_t  sprite_id;
+    int8_t   weapon_id;  /* -1 = none, 13-15 = weapons */
+    int8_t   armor_id;   /* -1 = none, 16-18 = armors */
 } Character;
 
 /* ── Party ─────────────────────────────────────────────── */

@@ -9,7 +9,7 @@
 
 /* ── Item Database ───────────────────────────────────── */
 /* IDs: 0-5 consumables/key, 6-12 treasure items (one per island) */
-#define ITEM_DB_COUNT  13
+#define ITEM_DB_COUNT  19
 
 static const ItemData g_item_db[ITEM_DB_COUNT] = {
     /* id  name             type            value  price  description          */
@@ -26,6 +26,14 @@ static const ItemData g_item_db[ITEM_DB_COUNT] = {
     { 10, "Frost Crystal",  ITEM_TREASURE,     0,     0, "Crystal of eternal ice" },
     { 11, "Abyssal Pearl",  ITEM_TREASURE,     0,     0, "Pearl from deep ruins"  },
     { 12, "Sky Scepter",    ITEM_TREASURE,     0,     0, "Scepter of the heavens" },
+    /* Equipment — weapons (id 13-15) */
+    { 13, "Short Sword",    ITEM_EQUIPMENT,    3,   100, "ATK +3"               },
+    { 14, "Iron Blade",     ITEM_EQUIPMENT,    6,   300, "ATK +6"               },
+    { 15, "Flame Sword",    ITEM_EQUIPMENT,   10,   600, "ATK +10"              },
+    /* Equipment — armor (id 16-18) */
+    { 16, "Leather Armor",  ITEM_EQUIPMENT,    3,    80, "DEF +3"               },
+    { 17, "Chain Mail",     ITEM_EQUIPMENT,    6,   250, "DEF +6"               },
+    { 18, "Dragon Plate",   ITEM_EQUIPMENT,   12,   800, "DEF +12"              },
 };
 
 /* ── Public API ──────────────────────────────────────── */
@@ -103,10 +111,12 @@ bool inventory_use(Inventory *inv, int slot_index, Character *target) {
             /* Cure poison — status effect system TBD */
             break;
         }
+        case ITEM_EQUIPMENT:
+            /* Equip the item on the target character */
+            return inventory_equip(inv, target, slot_index);
         case ITEM_BOMB:
         case ITEM_KEY:
         case ITEM_TREASURE:
-        case ITEM_EQUIPMENT:
             /* These items cannot be "used" on a character directly */
             return false;
     }
@@ -114,6 +124,48 @@ bool inventory_use(Inventory *inv, int slot_index, Character *target) {
     /* Consume 1 from stack */
     inventory_remove(inv, slot_index, 1);
     return true;
+}
+
+bool inventory_equip(Inventory *inv, Character *ch, int slot_index) {
+    if (slot_index < 0 || slot_index >= inv->count) return false;
+
+    const ItemData *item = inventory_get_item_data(inv->slots[slot_index].item_id);
+    if (!item || item->type != ITEM_EQUIPMENT) return false;
+
+    int item_id = item->id;
+
+    /* Determine if weapon (13-15) or armor (16-18) */
+    if (item_id >= 13 && item_id <= 15) {
+        /* Weapon — unequip old weapon first */
+        if (ch->weapon_id >= 0) {
+            const ItemData *old = inventory_get_item_data(ch->weapon_id);
+            if (old) {
+                ch->atk -= old->value;
+                inventory_add(inv, ch->weapon_id, 1);
+            }
+        }
+        /* Equip new weapon */
+        ch->weapon_id = (int8_t)item_id;
+        ch->atk += item->value;
+        inventory_remove(inv, slot_index, 1);
+        return true;
+    } else if (item_id >= 16 && item_id <= 18) {
+        /* Armor — unequip old armor first */
+        if (ch->armor_id >= 0) {
+            const ItemData *old = inventory_get_item_data(ch->armor_id);
+            if (old) {
+                ch->def -= old->value;
+                inventory_add(inv, ch->armor_id, 1);
+            }
+        }
+        /* Equip new armor */
+        ch->armor_id = (int8_t)item_id;
+        ch->def += item->value;
+        inventory_remove(inv, slot_index, 1);
+        return true;
+    }
+
+    return false;
 }
 
 const ItemData *inventory_get_item_data(int item_id) {

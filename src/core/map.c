@@ -6,21 +6,182 @@
 #include "platform.h"
 #include <string.h>
 
-/* ── Tile Colors (BGR555) ─────────────────────────────── */
-static const uint16_t tile_colors[TILE_COUNT] = {
-    [TILE_GRASS] = 0x2108,  /* dark green */
-    [TILE_WATER] = 0x7C00,  /* blue */
-    [TILE_SAND]  = 0x2D7F,  /* sandy yellow */
-    [TILE_STONE] = 0x4A52,  /* grey */
-    [TILE_TREE]  = 0x01C0,  /* bright green */
-    [TILE_WALL]  = 0x294A,  /* dark grey */
-    [TILE_DOOR]  = 0x015F,  /* brown */
-    [TILE_CHEST] = 0x02BF,  /* orange-ish */
-    [TILE_PORT]  = 0x4210,  /* light grey */
-};
-
 /* ── Tile Size ────────────────────────────────────────── */
 #define TILE_SIZE 8
+
+/* ── Patterned Tile Drawing ──────────────────────────── */
+/*
+ * draw_tile_pattern — draws an 8x8 pixel-art tile pattern using
+ * platform_draw_rect for individual pixels or small rects.
+ * tx, ty = tile coordinates for deterministic variation.
+ */
+static void draw_tile_pattern(int sx, int sy, TileType tile, int tx, int ty) {
+    int i, j;
+    uint16_t base, detail;
+
+    switch (tile) {
+
+    case TILE_GRASS:
+        /* Green base with darker green dots */
+        base   = 0x2108; /* dark green */
+        detail = 0x0100; /* darker green */
+        platform_draw_rect(sx, sy, 8, 8, base);
+        /* Deterministic "random" dots */
+        for (j = 0; j < 8; j += 2) {
+            for (i = 0; i < 8; i += 2) {
+                if (((tx * 7 + i) ^ (ty * 13 + j)) % 5 == 0) {
+                    platform_draw_rect(sx + i, sy + j, 1, 1, detail);
+                }
+            }
+        }
+        /* A few lighter highlights */
+        if ((tx + ty) % 3 == 0) {
+            platform_draw_rect(sx + 3, sy + 5, 1, 1, 0x3DEF);
+        }
+        if ((tx + ty) % 4 == 1) {
+            platform_draw_rect(sx + 6, sy + 2, 1, 1, 0x3DEF);
+        }
+        break;
+
+    case TILE_WATER:
+        /* Blue base with lighter wave lines */
+        base   = 0x7C00; /* blue */
+        detail = 0x7E10; /* lighter blue */
+        platform_draw_rect(sx, sy, 8, 8, base);
+        /* Horizontal wave lines with offset per row */
+        for (j = 1; j < 8; j += 3) {
+            int wave_off = ((tx + ty + j) % 3);
+            for (i = wave_off; i < 8; i += 3) {
+                platform_draw_rect(sx + i, sy + j, 2, 1, detail);
+            }
+        }
+        /* Sparkle dot */
+        if ((tx * 3 + ty * 5) % 7 == 0) {
+            platform_draw_rect(sx + ((tx + ty) % 6) + 1, sy + 2, 1, 1, 0x7FFF);
+        }
+        break;
+
+    case TILE_SAND:
+        /* Sandy yellow with brown speckles */
+        base   = 0x2D7F; /* sandy yellow */
+        detail = 0x155F; /* brown-ish */
+        platform_draw_rect(sx, sy, 8, 8, base);
+        for (j = 0; j < 8; j += 2) {
+            for (i = 1; i < 8; i += 3) {
+                if (((tx * 11 + i) ^ (ty * 7 + j)) % 7 == 0) {
+                    platform_draw_rect(sx + i, sy + j, 1, 1, detail);
+                }
+            }
+        }
+        /* Lighter sand grain */
+        if ((tx + ty) % 2 == 0) {
+            platform_draw_rect(sx + 5, sy + 3, 1, 1, 0x3FFF);
+        }
+        break;
+
+    case TILE_STONE:
+        /* Gray base with darker crack lines */
+        base   = 0x4A52; /* gray */
+        detail = 0x2529; /* dark gray */
+        platform_draw_rect(sx, sy, 8, 8, base);
+        /* Horizontal crack */
+        platform_draw_rect(sx + 1, sy + 3, 3, 1, detail);
+        platform_draw_rect(sx + 3, sy + 4, 2, 1, detail);
+        /* Vertical crack */
+        if ((tx + ty) % 2 == 0) {
+            platform_draw_rect(sx + 5, sy + 1, 1, 3, detail);
+        } else {
+            platform_draw_rect(sx + 2, sy + 5, 1, 2, detail);
+            platform_draw_rect(sx + 6, sy + 0, 1, 2, detail);
+        }
+        /* Light speckle */
+        platform_draw_rect(sx + ((tx * 3) % 7), sy + ((ty * 5) % 7), 1, 1, 0x5AD6);
+        break;
+
+    case TILE_TREE:
+        /* Brown trunk center, green foliage top */
+        platform_draw_rect(sx, sy, 8, 8, 0x2108); /* grass under tree */
+        /* Foliage (top 5 rows) */
+        platform_draw_rect(sx + 1, sy + 0, 6, 2, 0x01C0); /* bright green */
+        platform_draw_rect(sx + 0, sy + 2, 8, 2, 0x01C0);
+        platform_draw_rect(sx + 1, sy + 4, 6, 1, 0x0180); /* darker green */
+        /* Dark spots in foliage */
+        platform_draw_rect(sx + 2, sy + 1, 1, 1, 0x0100);
+        platform_draw_rect(sx + 5, sy + 2, 1, 1, 0x0100);
+        platform_draw_rect(sx + 3, sy + 3, 1, 1, 0x0100);
+        /* Trunk (bottom 3 rows, center 2 pixels wide) */
+        platform_draw_rect(sx + 3, sy + 5, 2, 3, 0x015F); /* brown */
+        platform_draw_rect(sx + 3, sy + 6, 1, 1, 0x00BF); /* darker brown line */
+        break;
+
+    case TILE_WALL:
+        /* Dark gray brick pattern with mortar lines */
+        base   = 0x294A; /* dark gray */
+        detail = 0x1CE7; /* mortar/lighter line */
+        platform_draw_rect(sx, sy, 8, 8, base);
+        /* Horizontal mortar lines */
+        platform_draw_rect(sx, sy + 3, 8, 1, detail);
+        platform_draw_rect(sx, sy + 7, 8, 1, detail);
+        /* Vertical mortar lines (offset between rows for brick pattern) */
+        platform_draw_rect(sx + 3, sy + 0, 1, 3, detail);
+        platform_draw_rect(sx + 7, sy + 0, 1, 3, detail);
+        platform_draw_rect(sx + 0, sy + 4, 1, 3, detail);
+        platform_draw_rect(sx + 5, sy + 4, 1, 3, detail);
+        break;
+
+    case TILE_DOOR:
+        /* Brown wood with dark keyhole/handle */
+        base   = 0x015F; /* brown */
+        platform_draw_rect(sx, sy, 8, 8, base);
+        /* Door frame (darker edges) */
+        platform_draw_rect(sx, sy, 1, 8, 0x00BF);
+        platform_draw_rect(sx + 7, sy, 1, 8, 0x00BF);
+        platform_draw_rect(sx, sy, 8, 1, 0x00BF);
+        /* Wood grain lines */
+        platform_draw_rect(sx + 3, sy + 1, 1, 7, 0x019F);
+        /* Keyhole (dark) */
+        platform_draw_rect(sx + 5, sy + 3, 1, 1, 0x0000);
+        /* Handle (metallic) */
+        platform_draw_rect(sx + 5, sy + 4, 1, 2, 0x4A52);
+        break;
+
+    case TILE_CHEST:
+        /* Orange/gold box with dark lid line */
+        platform_draw_rect(sx, sy, 8, 8, 0x2108); /* grass underneath */
+        /* Chest body */
+        platform_draw_rect(sx + 1, sy + 2, 6, 5, 0x02BF); /* orange */
+        /* Lid top */
+        platform_draw_rect(sx + 1, sy + 2, 6, 2, 0x035F); /* lighter gold */
+        /* Lid line divider */
+        platform_draw_rect(sx + 1, sy + 4, 6, 1, 0x0000); /* dark line */
+        /* Latch/lock */
+        platform_draw_rect(sx + 3, sy + 3, 2, 1, 0x03FF); /* bright yellow */
+        platform_draw_rect(sx + 4, sy + 5, 1, 1, 0x0000); /* keyhole */
+        /* Outline */
+        platform_draw_rect(sx + 1, sy + 2, 6, 1, 0x00BF); /* dark top edge */
+        break;
+
+    case TILE_PORT:
+        /* Gray dock planks with water showing through */
+        platform_draw_rect(sx, sy, 8, 8, 0x7C00); /* water base */
+        /* Horizontal planks */
+        platform_draw_rect(sx, sy + 0, 8, 2, 0x4210); /* light gray plank */
+        platform_draw_rect(sx, sy + 3, 8, 2, 0x4210);
+        platform_draw_rect(sx, sy + 6, 8, 2, 0x4210);
+        /* Plank detail lines */
+        platform_draw_rect(sx, sy + 1, 8, 1, 0x3DEF); /* darker grain */
+        platform_draw_rect(sx, sy + 4, 8, 1, 0x3DEF);
+        platform_draw_rect(sx, sy + 7, 8, 1, 0x3DEF);
+        /* Gaps showing water */
+        platform_draw_rect(sx + 3, sy + 0, 1, 1, 0x7C00);
+        platform_draw_rect(sx + 6, sy + 3, 1, 1, 0x7C00);
+        break;
+
+    default:
+        platform_draw_rect(sx, sy, 8, 8, 0x7FFF);
+        break;
+    }
+}
 
 /* ── Hardcoded Map Data ───────────────────────────────── */
 
@@ -747,8 +908,7 @@ void map_draw(const MapData *map, int16_t cam_x, int16_t cam_y) {
             int screen_x = tx * TILE_SIZE - cam_x;
             int screen_y = ty * TILE_SIZE - cam_y;
 
-            uint16_t color = tile_colors[tile];
-            platform_draw_rect(screen_x, screen_y, TILE_SIZE, TILE_SIZE, color);
+            draw_tile_pattern(screen_x, screen_y, tile, tx, ty);
         }
     }
 }

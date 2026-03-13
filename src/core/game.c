@@ -50,6 +50,8 @@ void game_init(GameContext *ctx) {
     hero->level   = 1;
     hero->exp     = 0;
     hero->sprite_id = 0;
+    hero->weapon_id = -1;
+    hero->armor_id  = -1;
     ctx->party.count = 1;
     ctx->party.gold  = 100;
 
@@ -174,14 +176,39 @@ void state_title_update(GameContext *ctx) {
 }
 
 void state_title_render(GameContext *ctx) {
-    platform_clear(0x0000); /* black */
-    platform_draw_text(48, 40, "TREASURE QUEST", 0x7FFF);
-    platform_draw_text(52, 60, "Seven Islands", 0x5294);
+    platform_clear(0x1084); /* dark blue-gray */
+
+    /* Decorative border */
+    platform_draw_rect(10, 10, 220, 140, 0x0842);
+    platform_draw_rect(12, 12, 216, 136, 0x0000);
+
+    /* Logo box */
+    platform_draw_rect(30, 20, 180, 40, 0x0421);
+    platform_draw_rect(32, 22, 176, 36, 0x0000);
+
+    /* Title text */
+    platform_draw_text(40, 28, "TREASURE  QUEST", 0x03FF); /* yellow */
+    platform_draw_text(48, 44, "Seven Islands", 0x5EF7);   /* light gray */
+
+    /* Decorative treasure icons */
+    for (int i = 0; i < 7; i++) {
+        int ix = 54 + i * 20;
+        uint16_t ic = (uint16_t)(0x001F + i * 0x0400); /* varying colors */
+        platform_draw_rect(ix, 68, 8, 8, ic);
+        platform_draw_rect(ix + 1, 69, 6, 6, 0x03FF);
+    }
+
+    /* Menu options */
+    platform_draw_text(76, 90, "New Adventure", 0x7FFF);
+    platform_draw_text(68, 106, "- PRESS START -", 0x5294);
 
     /* Blink "PRESS START" */
     if ((ctx->frame_count / 30) % 2 == 0) {
-        platform_draw_text(60, 120, "PRESS START", 0x7FFF);
+        platform_draw_text(68, 106, "- PRESS START -", 0x7FFF);
     }
+
+    /* Credits */
+    platform_draw_text(56, 132, "Sprint 18 Edition", 0x294A);
 }
 
 /* ── World / Overworld ─────────────────────────────────── */
@@ -265,6 +292,58 @@ void state_world_update(GameContext *ctx) {
                     /* Warp to another island */
                     uint8_t dest_map = trig->id;
                     audio_play_sfx(SFX_DOOR);
+
+                    /* Party recruitment events when leaving certain islands */
+                    /* Island 1 (Dark Forest) -> recruit Elara (Mage) */
+                    if (ctx->current_island == 1 && dest_map != 1 && ctx->party.count < MAX_PARTY_SIZE) {
+                        /* Check if Elara not already in party */
+                        bool found = false;
+                        for (int pi = 0; pi < ctx->party.count; pi++) {
+                            if (ctx->party.members[pi].name[0] == 'E' &&
+                                ctx->party.members[pi].name[1] == 'l') {
+                                found = true; break;
+                            }
+                        }
+                        if (!found) {
+                            party_add_member(&ctx->party, "Elara",
+                                25, 30, 5, 4, 7, 1);
+                            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
+                            ctx->party.members[ctx->party.count - 1].armor_id = -1;
+                        }
+                    }
+                    /* Island 3 (Volcanic Coast) -> recruit Drake (Fighter) */
+                    if (ctx->current_island == 3 && dest_map != 3 && ctx->party.count < MAX_PARTY_SIZE) {
+                        bool found = false;
+                        for (int pi = 0; pi < ctx->party.count; pi++) {
+                            if (ctx->party.members[pi].name[0] == 'D' &&
+                                ctx->party.members[pi].name[1] == 'r') {
+                                found = true; break;
+                            }
+                        }
+                        if (!found) {
+                            party_add_member(&ctx->party, "Drake",
+                                45, 8, 14, 8, 5, 2);
+                            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
+                            ctx->party.members[ctx->party.count - 1].armor_id = -1;
+                        }
+                    }
+                    /* Island 5 (Sunken Ruins) -> recruit Naia (Healer) */
+                    if (ctx->current_island == 5 && dest_map != 5 && ctx->party.count < MAX_PARTY_SIZE) {
+                        bool found = false;
+                        for (int pi = 0; pi < ctx->party.count; pi++) {
+                            if (ctx->party.members[pi].name[0] == 'N' &&
+                                ctx->party.members[pi].name[1] == 'a') {
+                                found = true; break;
+                            }
+                        }
+                        if (!found) {
+                            party_add_member(&ctx->party, "Naia",
+                                28, 35, 4, 5, 6, 3);
+                            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
+                            ctx->party.members[ctx->party.count - 1].armor_id = -1;
+                        }
+                    }
+
                     map_load(&g_map, dest_map);
                     npc_init_map(dest_map);
                     ctx->pos.x = g_map.spawn_x;
@@ -286,7 +365,8 @@ void state_world_update(GameContext *ctx) {
                     /* Boss IDs: 0=Fire Dragon(7), 1=Kraken(8), 2=Sky Lord(9) */
                     int boss_enemy_id = 7 + trig->id;
                     battle_init(&g_battle, &ctx->party.members[0],
-                                boss_enemy_id, &ctx->inventory);
+                                boss_enemy_id, &ctx->inventory,
+                                &ctx->party, ctx->current_island);
                     audio_play_bgm(BGM_BATTLE);
                     transition_start(TRANS_FADE_OUT, 15, STATE_BATTLE);
                     trig->triggered = true;
@@ -307,7 +387,8 @@ void state_world_update(GameContext *ctx) {
                 /* Pick island-appropriate enemy */
                 int eid = battle_get_random_enemy_for_island(
                               ctx->current_island, rng >> 8);
-                battle_init(&g_battle, &ctx->party.members[0], eid, &ctx->inventory);
+                battle_init(&g_battle, &ctx->party.members[0], eid, &ctx->inventory,
+                            &ctx->party, ctx->current_island);
                 audio_play_bgm(BGM_BATTLE);
                 transition_start(TRANS_FADE_OUT, 15, STATE_BATTLE);
             }
@@ -354,15 +435,72 @@ void state_world_render(GameContext *ctx) {
         ctx->pos.direction == 2 /* flip if facing left */
     );
 
-    /* HUD */
-    char hud[48];
-    snprintf(hud, sizeof(hud), "HP:%d/%d  G:%d  T:%d/%d",
-             ctx->party.members[0].hp,
-             ctx->party.members[0].max_hp,
-             ctx->party.gold,
-             treasure_get_count(ctx),
-             TOTAL_TREASURES);
-    platform_draw_text(2, 152, hud, 0x7FFF);
+    /* ── HUD Bar (top of screen) ─────────────────────── */
+    {
+        /* Semi-transparent dark bar */
+        platform_draw_rect(0, 0, 174, 10, 0x0000);
+
+        Character *h = &ctx->party.members[0];
+        char hud_line[64];
+        snprintf(hud_line, sizeof(hud_line), "HP:%d/%d MP:%d/%d G:%d %s",
+                 h->hp, h->max_hp, h->mp, h->max_mp,
+                 ctx->party.gold, g_map.name);
+        platform_draw_text(2, 1, hud_line, 0x7FFF);
+    }
+
+    /* ── Minimap (top-right corner, 60x40 pixels) ──── */
+    {
+        int mm_x = SCREEN_W - 62;
+        int mm_y = 2;
+        int mm_w = 60;
+        int mm_h = 40;
+
+        /* Background border */
+        platform_draw_rect(mm_x - 1, mm_y - 1, mm_w + 2, mm_h + 2, 0x0000);
+
+        /* Draw minimap: each tile = 2x2 pixels (max 30x20 = 60x40) */
+        /* We scale to fit: tile_pw = mm_w / map_w, tile_ph = mm_h / map_h */
+        /* For simplicity, use 2x2 per tile (30*2=60, 20*2=40 fits perfectly) */
+        for (int my = 0; my < g_map.height && my * 2 < mm_h; my++) {
+            for (int mx = 0; mx < g_map.width && mx * 2 < mm_w; mx++) {
+                TileType t = (TileType)g_map.tiles[my][mx];
+                uint16_t mc;
+                switch (t) {
+                    case TILE_GRASS: mc = 0x2108; break;
+                    case TILE_WATER: mc = 0x7C00; break;
+                    case TILE_SAND:  mc = 0x2D7F; break;
+                    case TILE_STONE: mc = 0x4A52; break;
+                    case TILE_TREE:  mc = 0x01C0; break;
+                    case TILE_WALL:  mc = 0x294A; break;
+                    case TILE_DOOR:  mc = 0x015F; break;
+                    case TILE_CHEST: mc = 0x02BF; break;
+                    case TILE_PORT:  mc = 0x4210; break;
+                    default:         mc = 0x0000; break;
+                }
+                platform_draw_rect(mm_x + mx * 2, mm_y + my * 2, 2, 2, mc);
+            }
+        }
+
+        /* Player dot (blinking) */
+        if ((ctx->frame_count / 15) % 2 == 0) {
+            int px = mm_x + ctx->pos.x * 2;
+            int py = mm_y + ctx->pos.y * 2;
+            platform_draw_rect(px, py, 2, 2, 0x7FFF); /* white blink */
+        } else {
+            int px = mm_x + ctx->pos.x * 2;
+            int py = mm_y + ctx->pos.y * 2;
+            platform_draw_rect(px, py, 2, 2, 0x001F); /* red blink */
+        }
+    }
+
+    /* ── Treasure Counter (bottom of screen) ─────────── */
+    {
+        char tc[24];
+        snprintf(tc, sizeof(tc), "Treasures: %d/%d",
+                 treasure_get_count(ctx), TOTAL_TREASURES);
+        platform_draw_rect(0, 150, 120, 10, 0x0000);
+        platform_draw_text(2, 151, tc, 0x03FF);
+    }
 
     /* Treasure collection icons */
     treasure_render_status(ctx);
@@ -486,20 +624,39 @@ void state_save_render(GameContext *ctx) {
 }
 
 /* ── Shop Screen ──────────────────────────────────────── */
-#define SHOP_ITEMS_COUNT 6
-static const uint8_t shop_item_ids[SHOP_ITEMS_COUNT] = { 0, 1, 2, 3, 4, 5 };
+/* Island 0-1: basic consumables */
+static const uint8_t shop_items_basic[] = { 0, 1, 2, 3, 4, 5 };
+#define SHOP_BASIC_COUNT 6
+/* Island 2-3: add Short Sword, Leather Armor */
+static const uint8_t shop_items_mid[] = { 0, 1, 2, 4, 13, 16 };
+#define SHOP_MID_COUNT 6
+/* Island 4-5: add Iron Blade, Chain Mail */
+static const uint8_t shop_items_adv[] = { 1, 2, 4, 14, 17, 15 };
+#define SHOP_ADV_COUNT 6
+/* Island 6: endgame gear */
+static const uint8_t shop_items_end[] = { 1, 2, 4, 15, 18, 5 };
+#define SHOP_END_COUNT 6
+
+static const uint8_t *get_shop_items(int island, int *count) {
+    if (island <= 1) { *count = SHOP_BASIC_COUNT; return shop_items_basic; }
+    if (island <= 3) { *count = SHOP_MID_COUNT;   return shop_items_mid;   }
+    if (island <= 5) { *count = SHOP_ADV_COUNT;   return shop_items_adv;   }
+    *count = SHOP_END_COUNT; return shop_items_end;
+}
 
 void state_shop_update(GameContext *ctx) {
     uint16_t keys = platform_keys_pressed();
+    int shop_count = 0;
+    const uint8_t *shop_ids = get_shop_items(ctx->current_island, &shop_count);
 
     if (keys & KEY_UP) {
         if (ctx->shop_cursor > 0) ctx->shop_cursor--;
     }
     if (keys & KEY_DOWN) {
-        if (ctx->shop_cursor < SHOP_ITEMS_COUNT - 1) ctx->shop_cursor++;
+        if (ctx->shop_cursor < shop_count - 1) ctx->shop_cursor++;
     }
     if (keys & KEY_A) {
-        const ItemData *item = inventory_get_item_data(shop_item_ids[ctx->shop_cursor]);
+        const ItemData *item = inventory_get_item_data(shop_ids[ctx->shop_cursor]);
         if (item && ctx->party.gold >= (int16_t)item->price) {
             ctx->party.gold -= (int16_t)item->price;
             inventory_add(&ctx->inventory, item->id, 1);
@@ -512,6 +669,9 @@ void state_shop_update(GameContext *ctx) {
 }
 
 void state_shop_render(GameContext *ctx) {
+    int shop_count = 0;
+    const uint8_t *shop_ids = get_shop_items(ctx->current_island, &shop_count);
+
     platform_clear(0x0000);
     platform_draw_rect(16, 8, 208, 144, 0x0842);
     platform_draw_text(92, 12, "SHOP", 0x03FF);
@@ -520,8 +680,8 @@ void state_shop_render(GameContext *ctx) {
     snprintf(gold_str, sizeof(gold_str), "Gold: %d", ctx->party.gold);
     platform_draw_text(160, 12, gold_str, 0x03FF);
 
-    for (int i = 0; i < SHOP_ITEMS_COUNT; i++) {
-        const ItemData *item = inventory_get_item_data(shop_item_ids[i]);
+    for (int i = 0; i < shop_count; i++) {
+        const ItemData *item = inventory_get_item_data(shop_ids[i]);
         if (!item) continue;
 
         int y = 30 + i * 16;
@@ -537,8 +697,8 @@ void state_shop_render(GameContext *ctx) {
     }
 
     /* Description of selected item */
-    {
-        const ItemData *sel = inventory_get_item_data(shop_item_ids[ctx->shop_cursor]);
+    if (ctx->shop_cursor < shop_count) {
+        const ItemData *sel = inventory_get_item_data(shop_ids[ctx->shop_cursor]);
         if (sel) {
             platform_draw_rect(16, 132, 208, 20, 0x0421);
             platform_draw_text(20, 134, sel->description, 0x5EF7);

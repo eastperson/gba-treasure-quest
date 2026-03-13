@@ -74,7 +74,7 @@ int battle_calc_damage(int atk, int def) {
 }
 
 /* ── Initialization ───────────────────────────────────── */
-void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *inv) {
+void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *inv, Party *party, uint8_t island) {
     (void)hero;
     memset(bc, 0, sizeof(BattleContext));
 
@@ -83,6 +83,14 @@ void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *in
     }
 
     bc->enemy = enemy_table[enemy_id];
+
+    /* Scale enemy exp/gold by island progression */
+    {
+        int scale_num = 10 + island * 2; /* (1 + island*0.2) * 10 */
+        bc->enemy.exp_reward  = (uint16_t)((bc->enemy.exp_reward * scale_num) / 10);
+        bc->enemy.gold_reward = (uint16_t)((bc->enemy.gold_reward * scale_num) / 10);
+    }
+
     bc->state = BATTLE_START;
     bc->turn_timer = 0;
     bc->cursor_pos = 0;
@@ -91,6 +99,10 @@ void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *in
     bc->player_defending = false;
     bc->damage_display = 0;
     bc->inv = inv;
+    bc->party = party;
+    bc->boss_turn_count = 0;
+    bc->hero_stunned = false;
+    bc->island = island;
 
     snprintf(bc->message, sizeof(bc->message),
              "A %s appeared!", bc->enemy.name);
@@ -118,6 +130,15 @@ void battle_update(BattleContext *bc, Character *hero) {
 
     /* ── BATTLE_COMMAND: select action ────────────────── */
     case BATTLE_COMMAND:
+        /* If hero is stunned, skip to enemy turn */
+        if (bc->hero_stunned) {
+            bc->hero_stunned = false;
+            snprintf(bc->message, sizeof(bc->message),
+                     "%s is stunned!", hero->name);
+            bc->state = BATTLE_ENEMY_TURN;
+            bc->turn_timer = 0;
+            break;
+        }
         if (pressed & KEY_UP) {
             if (bc->cursor_pos > 0)
                 bc->cursor_pos--;
@@ -301,6 +322,22 @@ void battle_update(BattleContext *bc, Character *hero) {
     case BATTLE_EXECUTE:
         if (bc->turn_timer == 0) {
             int dmg = battle_calc_damage(hero->atk, bc->enemy.def);
+
+            /* Critical hit: 5% base + LUK/256 */
+            {
+                int crit_chance = 5 + (hero->luk * 100) / 256;
+                int crit_roll = (int)(battle_rand() % 100);
+                if (crit_roll < crit_chance) {
+                    dmg = (dmg * 3) / 2; /* 1.5x damage */
+                    if (dmg < 2) dmg = 2;
+                    snprintf(bc->message, sizeof(bc->message),
+                             "CRITICAL! %s dealt %d!", hero->name, dmg);
+                } else {
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s dealt %d damage!", hero->name, dmg);
+                }
+            }
+
             bc->enemy.hp -= (int16_t)dmg;
             bc->damage_display = (int16_t)dmg;
 
@@ -310,12 +347,6 @@ void battle_update(BattleContext *bc, Character *hero) {
 
             if (bc->enemy.hp <= 0) {
                 bc->enemy.hp = 0;
-                snprintf(bc->message, sizeof(bc->message),
-                         "%s dealt %d damage!", hero->name, dmg);
-                /* Will transition to WIN after showing damage */
-            } else {
-                snprintf(bc->message, sizeof(bc->message),
-                         "%s dealt %d damage!", hero->name, dmg);
             }
         }
         bc->turn_timer++;
@@ -333,30 +364,89 @@ void battle_update(BattleContext *bc, Character *hero) {
     /* ── BATTLE_ENEMY_TURN: enemy attacks player ──────── */
     case BATTLE_ENEMY_TURN:
         if (bc->turn_timer == 0) {
-            int dmg = battle_calc_damage(bc->enemy.atk, hero->def);
-            if (bc->player_defending) {
-                dmg /= 2;
-                if (dmg < 1) dmg = 1;
+            bc->boss_turn_count++;
+
+            /* Enemy flee check: enemies with <20% HP have 30% chance to flee */
+            /* (bosses don't flee — enemy ids 7-9) */
+            {
+                bool is_boss = (bc->enemy.sprite_id >= 23 && bc->enemy.sprite_id <= 25);
+                int hp_pct = (bc->enemy.max_hp > 0)
+                    ? (bc->enemy.hp * 100) / bc->enemy.max_hp : 100;
+                if (!is_boss && hp_pct < 20) {
+                    int flee_roll = (int)(battle_rand() % 100);
+                    if (flee_roll < 30) {
+                        snprintf(bc->message, sizeof(bc->message),
+                                 "%s fled!", bc->enemy.name);
+                        bc->enemy.hp = 0;
+                        /* No rewards for fled enemy */
+                        bc->enemy.exp_reward = 0;
+                        bc->enemy.gold_reward = 0;
+                        bc->turn_timer = 1; /* skip damage */
+                        /* Fall through to win check below */
+                    }
+                }
             }
-            hero->hp -= (int16_t)dmg;
-            bc->damage_display = (int16_t)dmg;
 
-            /* Spawn damage number at hero stats area */
-            fx_spawn(FX_DAMAGE_NUM, 40, 100, dmg, 30);
+            if (bc->turn_timer == 0) {
+                int dmg = battle_calc_damage(bc->enemy.atk, hero->def);
 
-            if (hero->hp <= 0) {
-                hero->hp = 0;
-                snprintf(bc->message, sizeof(bc->message),
-                         "%s attacks for %d!", bc->enemy.name, dmg);
-            } else {
-                snprintf(bc->message, sizeof(bc->message),
-                         "%s attacks for %d!", bc->enemy.name, dmg);
+                /* Boss AI special attacks */
+                bool is_fire_dragon = (bc->enemy.sprite_id == 23);
+                bool is_kraken = (bc->enemy.sprite_id == 24);
+                bool is_sky_lord = (bc->enemy.sprite_id == 25);
+
+                if (is_fire_dragon && (bc->boss_turn_count % 3 == 0)) {
+                    /* Fire Breath: 2x damage every 3rd turn */
+                    dmg = battle_calc_damage(bc->enemy.atk * 2, hero->def);
+                    snprintf(bc->message, sizeof(bc->message),
+                             "Fire Breath! %d damage!", dmg);
+                } else if (is_kraken && (bc->boss_turn_count % 4 == 0)) {
+                    /* Tentacle Grab: stun hero for 1 turn + normal damage */
+                    bc->hero_stunned = true;
+                    snprintf(bc->message, sizeof(bc->message),
+                             "Tentacle Grab! %d dmg! Stunned!", dmg);
+                } else if (is_sky_lord && (bc->boss_turn_count % 2 == 0)) {
+                    /* Thunder Storm: hits all party (deal damage to hero + party) */
+                    dmg = battle_calc_damage(bc->enemy.atk, hero->def / 2);
+                    /* Damage party members too */
+                    if (bc->party) {
+                        for (int pi = 1; pi < bc->party->count; pi++) {
+                            Character *m = &bc->party->members[pi];
+                            int pdmg = battle_calc_damage(bc->enemy.atk, m->def / 2);
+                            if (bc->player_defending) pdmg /= 2;
+                            if (pdmg < 1) pdmg = 1;
+                            m->hp -= (int16_t)pdmg;
+                            if (m->hp < 0) m->hp = 0;
+                        }
+                    }
+                    snprintf(bc->message, sizeof(bc->message),
+                             "Thunder Storm! %d to all!", dmg);
+                } else {
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s attacks for %d!", bc->enemy.name, dmg);
+                }
+
+                if (bc->player_defending) {
+                    dmg /= 2;
+                    if (dmg < 1) dmg = 1;
+                }
+                hero->hp -= (int16_t)dmg;
+                bc->damage_display = (int16_t)dmg;
+
+                /* Spawn damage number at hero stats area */
+                fx_spawn(FX_DAMAGE_NUM, 40, 100, dmg, 30);
+
+                if (hero->hp <= 0) {
+                    hero->hp = 0;
+                }
             }
         }
         bc->turn_timer++;
         if (bc->turn_timer >= 30) {
             bc->turn_timer = 0;
-            if (hero->hp <= 0) {
+            if (bc->enemy.hp <= 0) {
+                bc->state = BATTLE_WIN;
+            } else if (hero->hp <= 0) {
                 bc->state = BATTLE_LOSE;
             } else {
                 bc->state = BATTLE_COMMAND;
@@ -448,16 +538,25 @@ void battle_render(BattleContext *bc, Character *hero) {
         platform_draw_text(80, 60, ehp, 0x7FFF);
     }
 
-    /* ── Hero stats (bottom left) ─────────────────────── */
-    platform_draw_rect(0, 110, 120, 50, 0x0000);
+    /* ── Hero stats (bottom left) — show all party members ── */
+    platform_draw_rect(0, 76, 120, 84, 0x0000);
     {
-        char line1[32], line2[32], line3[32];
-        snprintf(line1, sizeof(line1), "%s  Lv%d", hero->name, hero->level);
-        snprintf(line2, sizeof(line2), "HP:%d/%d", hero->hp, hero->max_hp);
-        snprintf(line3, sizeof(line3), "MP:%d/%d", hero->mp, hero->max_mp);
-        platform_draw_text(4, 114, line1, 0x7FFF);
-        platform_draw_text(4, 126, line2, 0x7FFF);
-        platform_draw_text(4, 138, line3, 0x7FFF);
+        char line1[32], line2[32];
+        /* Show hero (primary fighter) with full info */
+        snprintf(line1, sizeof(line1), "%s Lv%d", hero->name, hero->level);
+        snprintf(line2, sizeof(line2), "HP:%d/%d MP:%d/%d", hero->hp, hero->max_hp, hero->mp, hero->max_mp);
+        platform_draw_text(4, 78, line1, 0x7FFF);
+        platform_draw_text(4, 88, line2, 0x7FFF);
+
+        /* Show other party members' HP (compact) */
+        if (bc->party) {
+        for (int pi = 1; pi < bc->party->count && pi < MAX_PARTY_SIZE; pi++) {
+            const Character *m = &bc->party->members[pi];
+            int y = 98 + (pi - 1) * 12;
+            snprintf(line1, sizeof(line1), "%s HP:%d/%d", m->name, m->hp, m->max_hp);
+            platform_draw_text(4, y, line1, 0x5EF7);
+        }
+        } /* end if bc->party */
     }
 
     /* ── Command menu (bottom right) ──────────────────── */

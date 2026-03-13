@@ -5,6 +5,7 @@
 #include "menu.h"
 #include "save.h"
 #include "party.h"
+#include "inventory.h"
 #include "platform.h"
 #include <stdio.h>
 
@@ -21,50 +22,62 @@ static const char *menu_labels[MENU_COUNT] = {
 static bool g_show_status = false;
 
 static void status_render(GameContext *ctx) {
-    Character *ch = &ctx->party.members[0];
-
     /* Full-screen dark background */
     platform_draw_rect(0, 0, SCREEN_W, SCREEN_H, 0x0000);
 
     /* Title */
-    platform_draw_text(80, 8, "- STATUS -", 0x7FFF);
+    platform_draw_text(80, 2, "- STATUS -", 0x7FFF);
 
-    /* Character name and level */
     char line[48];
-    snprintf(line, sizeof(line), "%s  Lv.%d", ch->name, ch->level);
-    platform_draw_text(16, 28, line, 0x7FFF);
 
-    /* HP / MP */
-    snprintf(line, sizeof(line), "HP: %d / %d", ch->hp, ch->max_hp);
-    platform_draw_text(16, 44, line, 0x1BE0); /* green */
+    /* Show all party members */
+    for (int pi = 0; pi < ctx->party.count && pi < MAX_PARTY_SIZE; pi++) {
+        Character *ch = &ctx->party.members[pi];
+        int col_x = (pi % 2) * 120 + 4;
+        int col_y = (pi / 2) * 72 + 14;
 
-    snprintf(line, sizeof(line), "MP: %d / %d", ch->mp, ch->max_mp);
-    platform_draw_text(16, 56, line, 0x7C1F); /* purple */
+        /* Name and level */
+        snprintf(line, sizeof(line), "%s Lv.%d", ch->name, ch->level);
+        platform_draw_text(col_x, col_y, line, 0x7FFF);
 
-    /* Combat stats */
-    snprintf(line, sizeof(line), "ATK: %d", ch->atk);
-    platform_draw_text(16, 76, line, 0x7FFF);
+        /* HP / MP */
+        snprintf(line, sizeof(line), "HP:%d/%d", ch->hp, ch->max_hp);
+        platform_draw_text(col_x, col_y + 12, line, 0x1BE0);
 
-    snprintf(line, sizeof(line), "DEF: %d", ch->def);
-    platform_draw_text(16, 88, line, 0x7FFF);
+        snprintf(line, sizeof(line), "MP:%d/%d", ch->mp, ch->max_mp);
+        platform_draw_text(col_x, col_y + 22, line, 0x7C1F);
 
-    snprintf(line, sizeof(line), "SPD: %d", ch->spd);
-    platform_draw_text(16, 100, line, 0x7FFF);
+        /* Combat stats */
+        snprintf(line, sizeof(line), "A:%d D:%d S:%d", ch->atk, ch->def, ch->spd);
+        platform_draw_text(col_x, col_y + 34, line, 0x7FFF);
 
-    snprintf(line, sizeof(line), "LUK: %d", ch->luk);
-    platform_draw_text(16, 112, line, 0x7FFF);
+        /* Equipment info */
+        if (ch->weapon_id >= 0) {
+            const ItemData *w = inventory_get_item_data(ch->weapon_id);
+            if (w) {
+                snprintf(line, sizeof(line), "W:%s", w->name);
+                platform_draw_text(col_x, col_y + 44, line, 0x03FF);
+            }
+        } else {
+            platform_draw_text(col_x, col_y + 44, "W:None", 0x294A);
+        }
+        if (ch->armor_id >= 0) {
+            const ItemData *a = inventory_get_item_data(ch->armor_id);
+            if (a) {
+                snprintf(line, sizeof(line), "A:%s", a->name);
+                platform_draw_text(col_x, col_y + 54, line, 0x03FF);
+            }
+        } else {
+            platform_draw_text(col_x, col_y + 54, "A:None", 0x294A);
+        }
+    }
 
-    /* EXP to next level */
-    uint16_t needed = party_calc_exp_needed(ch->level);
-    snprintf(line, sizeof(line), "EXP: %d / %d", ch->exp, needed);
-    platform_draw_text(16, 132, line, 0x03FF); /* yellow */
-
-    /* Gold */
+    /* Gold at bottom */
     snprintf(line, sizeof(line), "Gold: %d", ctx->party.gold);
-    platform_draw_text(16, 148, line, 0x03FF);
+    platform_draw_text(4, 148, line, 0x03FF);
 
     /* Footer */
-    platform_draw_text(72, 152, "[B] Back", 0x5294);
+    platform_draw_text(140, 148, "[B] Back", 0x5294);
 }
 
 /* ── Menu Update ─────────────────────────────────────── */

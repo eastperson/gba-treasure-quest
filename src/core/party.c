@@ -88,6 +88,8 @@ void party_add_member(Party *party, const char *name,
     ch->level   = 1;
     ch->exp     = 0;
     ch->sprite_id = sprite_id;
+    ch->weapon_id = -1;
+    ch->armor_id  = -1;
 
     party->count++;
 }
