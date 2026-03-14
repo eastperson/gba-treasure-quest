@@ -90,8 +90,11 @@ typedef struct {
     uint8_t     inv_cursor;       /* inventory screen cursor */
     uint8_t     save_cursor;      /* save slot selection cursor */
     uint8_t     shop_cursor;      /* shop screen cursor */
+    uint8_t     shop_mode;        /* 0 = buy, 1 = sell */
     bool        running;
     bool        victory;          /* true = all treasures, false = defeat */
+    char        drop_msg[48];     /* item drop message after battle */
+    uint8_t     drop_msg_timer;   /* frames remaining to show drop message */
 } GameContext;
 
 /* ── Core Functions ────────────────────────────────────── */

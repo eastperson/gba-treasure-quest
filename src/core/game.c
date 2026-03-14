@@ -77,6 +77,9 @@ void game_init(GameContext *ctx) {
     ctx->menu.cursor = 0;
     ctx->menu.open   = false;
     ctx->save_cursor = 0;
+    ctx->shop_mode   = 0;
+    ctx->drop_msg[0] = '\0';
+    ctx->drop_msg_timer = 0;
 
     /* Initialize treasure collection system */
     treasure_init();
@@ -208,7 +211,7 @@ void state_title_render(GameContext *ctx) {
     }
 
     /* Credits */
-    platform_draw_text(56, 132, "Sprint 18 Edition", 0x294A);
+    platform_draw_text(56, 132, "Sprint 19 Edition", 0x294A);
 }
 
 /* ── World / Overworld ─────────────────────────────────── */
@@ -397,6 +400,11 @@ void state_world_update(GameContext *ctx) {
         prev_y = ctx->pos.y;
     }
 
+    /* Decrement drop message timer */
+    if (ctx->drop_msg_timer > 0) {
+        ctx->drop_msg_timer--;
+    }
+
     /* Menu */
     if (pressed & KEY_START) {
         ctx->menu.cursor = 0;
@@ -504,7 +512,31 @@ void state_world_render(GameContext *ctx) {
 
     /* Treasure collection icons */
     treasure_render_status(ctx);
+
+    /* Item drop message overlay */
+    if (ctx->drop_msg_timer > 0 && ctx->drop_msg[0] != '\0') {
+        platform_draw_rect(40, 70, 160, 14, 0x0000);
+        platform_draw_text(44, 72, ctx->drop_msg, 0x03FF);
+    }
 }
+
+/* ── Item Drop Table (by enemy sprite_id 16-25 → item_id, chance%) ── */
+typedef struct { uint8_t item_id; uint8_t chance; } DropEntry;
+#define DROP_TABLE_BASE 16
+#define DROP_TABLE_COUNT 10
+
+static const DropEntry enemy_drops[DROP_TABLE_COUNT] = {
+    /* sprite 16: Slime   */ { 0, 30 },  /* Potion 30% */
+    /* sprite 17: Goblin  */ { 0, 25 },  /* Potion 25% */
+    /* sprite 18: Scorpion*/ { 3, 20 },  /* Antidote 20% */
+    /* sprite 19: Fire Bat*/ { 2, 20 },  /* Ether 20% */
+    /* sprite 20: Ice Gol */ { 1, 15 },  /* Hi-Potion 15% */
+    /* sprite 21: Wraith  */ { 2, 20 },  /* Ether 20% */
+    /* sprite 22: Temple G*/ { 5, 10 },  /* Skeleton Key 10% */
+    /* sprite 23: FDragon */ { 4, 40 },  /* Bomb 40% */
+    /* sprite 24: Kraken  */ { 1, 50 },  /* Hi-Potion 50% */
+    /* sprite 25: Sky Lord*/ { 5, 40 },  /* Skeleton Key 40% */
+};
 
 /* ── Battle ────────────────────────────────────────────── */
 void state_battle_update(GameContext *ctx) {
@@ -523,6 +555,26 @@ void state_battle_update(GameContext *ctx) {
             if (g_battle.enemy.hp <= 0) {
                 hero->exp += g_battle.enemy.exp_reward;
                 ctx->party.gold += g_battle.enemy.gold_reward;
+
+                /* Item drop check */
+                ctx->drop_msg[0] = '\0';
+                ctx->drop_msg_timer = 0;
+                {
+                    int didx = g_battle.enemy.sprite_id - DROP_TABLE_BASE;
+                    if (didx >= 0 && didx < DROP_TABLE_COUNT) {
+                        uint32_t rng = (ctx->frame_count * 1103515245u + 12345u) >> 16;
+                        if ((int)(rng % 100) < enemy_drops[didx].chance) {
+                            int drop_id = enemy_drops[didx].item_id;
+                            inventory_add(&ctx->inventory, drop_id, 1);
+                            const ItemData *di = inventory_get_item_data(drop_id);
+                            if (di) {
+                                snprintf(ctx->drop_msg, sizeof(ctx->drop_msg),
+                                         "Got %s!", di->name);
+                                ctx->drop_msg_timer = 90;
+                            }
+                        }
+                    }
+                }
 
                 /* Level up using growth system */
                 while (party_try_level_up(hero)) {
@@ -646,63 +698,136 @@ static const uint8_t *get_shop_items(int island, int *count) {
 
 void state_shop_update(GameContext *ctx) {
     uint16_t keys = platform_keys_pressed();
-    int shop_count = 0;
-    const uint8_t *shop_ids = get_shop_items(ctx->current_island, &shop_count);
 
-    if (keys & KEY_UP) {
-        if (ctx->shop_cursor > 0) ctx->shop_cursor--;
+    /* Toggle buy/sell mode with L/R */
+    if (keys & (KEY_L | KEY_R)) {
+        ctx->shop_mode = ctx->shop_mode ? 0 : 1;
+        ctx->shop_cursor = 0;
     }
-    if (keys & KEY_DOWN) {
-        if (ctx->shop_cursor < shop_count - 1) ctx->shop_cursor++;
-    }
-    if (keys & KEY_A) {
-        const ItemData *item = inventory_get_item_data(shop_ids[ctx->shop_cursor]);
-        if (item && ctx->party.gold >= (int16_t)item->price) {
-            ctx->party.gold -= (int16_t)item->price;
-            inventory_add(&ctx->inventory, item->id, 1);
-            audio_play_sfx(SFX_CONFIRM);
+
+    if (ctx->shop_mode == 0) {
+        /* ── BUY mode ── */
+        int shop_count = 0;
+        const uint8_t *shop_ids = get_shop_items(ctx->current_island, &shop_count);
+
+        if (keys & KEY_UP) {
+            if (ctx->shop_cursor > 0) ctx->shop_cursor--;
+        }
+        if (keys & KEY_DOWN) {
+            if (ctx->shop_cursor < shop_count - 1) ctx->shop_cursor++;
+        }
+        if (keys & KEY_A) {
+            const ItemData *item = inventory_get_item_data(shop_ids[ctx->shop_cursor]);
+            if (item && ctx->party.gold >= (int16_t)item->price) {
+                ctx->party.gold -= (int16_t)item->price;
+                inventory_add(&ctx->inventory, item->id, 1);
+                audio_play_sfx(SFX_CONFIRM);
+            }
+        }
+    } else {
+        /* ── SELL mode ── */
+        if (keys & KEY_UP) {
+            if (ctx->shop_cursor > 0) ctx->shop_cursor--;
+        }
+        if (keys & KEY_DOWN) {
+            if (ctx->inventory.count > 0 &&
+                ctx->shop_cursor < ctx->inventory.count - 1) {
+                ctx->shop_cursor++;
+            }
+        }
+        if (keys & KEY_A) {
+            if (ctx->inventory.count > 0 && ctx->shop_cursor < ctx->inventory.count) {
+                const ItemData *item = inventory_get_item_data(
+                    ctx->inventory.slots[ctx->shop_cursor].item_id);
+                if (item && item->type != ITEM_TREASURE && item->type != ITEM_KEY) {
+                    int sell_price = (int)item->price / 2;
+                    ctx->party.gold += (int16_t)sell_price;
+                    inventory_remove(&ctx->inventory, ctx->shop_cursor, 1);
+                    audio_play_sfx(SFX_CONFIRM);
+                    if (ctx->shop_cursor >= ctx->inventory.count && ctx->shop_cursor > 0) {
+                        ctx->shop_cursor--;
+                    }
+                }
+            }
         }
     }
+
     if (keys & KEY_B) {
+        ctx->shop_mode = 0;
         ctx->state = STATE_WORLD;
     }
 }
 
 void state_shop_render(GameContext *ctx) {
-    int shop_count = 0;
-    const uint8_t *shop_ids = get_shop_items(ctx->current_island, &shop_count);
-
     platform_clear(0x0000);
     platform_draw_rect(16, 8, 208, 144, 0x0842);
-    platform_draw_text(92, 12, "SHOP", 0x03FF);
 
     char gold_str[24];
     snprintf(gold_str, sizeof(gold_str), "Gold: %d", ctx->party.gold);
     platform_draw_text(160, 12, gold_str, 0x03FF);
 
-    for (int i = 0; i < shop_count; i++) {
-        const ItemData *item = inventory_get_item_data(shop_ids[i]);
-        if (!item) continue;
+    /* Mode tabs */
+    platform_draw_text(40, 12, "BUY", ctx->shop_mode == 0 ? 0x03FF : 0x5294);
+    platform_draw_text(80, 12, "SELL", ctx->shop_mode == 1 ? 0x03FF : 0x5294);
 
-        int y = 30 + i * 16;
-        uint16_t color = (i == ctx->shop_cursor) ? 0x03FF : 0x7FFF;
+    if (ctx->shop_mode == 0) {
+        /* ── BUY mode ── */
+        int shop_count = 0;
+        const uint8_t *shop_ids = get_shop_items(ctx->current_island, &shop_count);
 
-        if (i == ctx->shop_cursor) {
-            platform_draw_text(20, y, ">", 0x03FF);
+        for (int i = 0; i < shop_count; i++) {
+            const ItemData *item = inventory_get_item_data(shop_ids[i]);
+            if (!item) continue;
+
+            int y = 30 + i * 16;
+            uint16_t color = (i == ctx->shop_cursor) ? 0x03FF : 0x7FFF;
+            if (i == ctx->shop_cursor) {
+                platform_draw_text(20, y, ">", 0x03FF);
+            }
+            char line[40];
+            snprintf(line, sizeof(line), "%-14s %dG", item->name, item->price);
+            platform_draw_text(32, y, line, color);
         }
 
-        char line[40];
-        snprintf(line, sizeof(line), "%-14s %dG", item->name, item->price);
-        platform_draw_text(32, y, line, color);
-    }
+        if (ctx->shop_cursor < shop_count) {
+            const ItemData *sel = inventory_get_item_data(shop_ids[ctx->shop_cursor]);
+            if (sel) {
+                platform_draw_rect(16, 132, 208, 20, 0x0421);
+                platform_draw_text(20, 134, sel->description, 0x5EF7);
+                platform_draw_text(20, 144, "[A]Buy [B]Exit [L/R]Sell", 0x5294);
+            }
+        }
+    } else {
+        /* ── SELL mode ── */
+        if (ctx->inventory.count == 0) {
+            platform_draw_text(72, 70, "No items", 0x5294);
+        } else {
+            for (int i = 0; i < ctx->inventory.count && i < 6; i++) {
+                const ItemData *item = inventory_get_item_data(
+                    ctx->inventory.slots[i].item_id);
+                if (!item) continue;
 
-    /* Description of selected item */
-    if (ctx->shop_cursor < shop_count) {
-        const ItemData *sel = inventory_get_item_data(shop_ids[ctx->shop_cursor]);
-        if (sel) {
-            platform_draw_rect(16, 132, 208, 20, 0x0421);
-            platform_draw_text(20, 134, sel->description, 0x5EF7);
-            platform_draw_text(20, 144, "[A] Buy  [B] Exit", 0x5294);
+                int y = 30 + i * 16;
+                uint16_t color = (i == ctx->shop_cursor) ? 0x03FF : 0x7FFF;
+                if (i == ctx->shop_cursor) {
+                    platform_draw_text(20, y, ">", 0x03FF);
+                }
+                int sell_price = (int)item->price / 2;
+                char line[40];
+                snprintf(line, sizeof(line), "%-12s x%d %dG",
+                         item->name, ctx->inventory.slots[i].count, sell_price);
+                platform_draw_text(32, y, line, color);
+            }
+
+            if (ctx->shop_cursor < ctx->inventory.count) {
+                const ItemData *sel = inventory_get_item_data(
+                    ctx->inventory.slots[ctx->shop_cursor].item_id);
+                if (sel) {
+                    platform_draw_rect(16, 132, 208, 20, 0x0421);
+                    platform_draw_text(20, 134, sel->description, 0x5EF7);
+                    platform_draw_text(20, 144, "[A]Sell [B]Exit [L/R]Buy", 0x5294);
+                }
+            }
         }
     }
 }
