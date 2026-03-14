@@ -53,7 +53,23 @@ static const char *cmd_names[CMD_COUNT] = {
     "Magic",
     "Defend",
     "Item",
+    "Skill",
     "Flee",
+};
+
+/* ── Character Skill Data ────────────────────────────── */
+typedef struct {
+    char    name[MAX_NAME_LEN];
+    int16_t mp_cost;
+    int16_t power;  /* multiplier x10 or fixed value */
+    uint8_t type;   /* 0=phys_mult, 1=magic_fixed, 2=berserk, 3=revive */
+} SkillData;
+
+static const SkillData g_char_skills[4] = {
+    { "Power Slash",  3, 18, 0 },  /* Hero: ATK * 1.8 */
+    { "Arcane Burst", 6, 25, 1 },  /* Elara: 25 magic damage */
+    { "Berserk",      5, 20, 2 },  /* Drake: ATKx2, DEF=0 */
+    { "Revive",      15, 30, 3 },  /* Naia: revive ally 30% HP */
 };
 
 /* ── Spell Table ─────────────────────────────────────── */
@@ -103,6 +119,8 @@ void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *in
     bc->boss_turn_count = 0;
     bc->hero_stunned = false;
     bc->island = island;
+    bc->party_turn_idx = 0;
+    bc->berserk_active = false;
 
     snprintf(bc->message, sizeof(bc->message),
              "A %s appeared!", bc->enemy.name);
@@ -181,6 +199,90 @@ void battle_update(BattleContext *bc, Character *hero) {
                 }
                 break;
 
+            case CMD_SKILL: {
+                /* Use hero's character-specific skill */
+                uint8_t sid = hero->skill_id;
+                if (sid < 4) {
+                    const SkillData *sk = &g_char_skills[sid];
+                    if (hero->mp < sk->mp_cost) {
+                        snprintf(bc->message, sizeof(bc->message),
+                                 "Not enough MP for %s!", sk->name);
+                    } else {
+                        hero->mp -= sk->mp_cost;
+                        if (sk->type == 0) {
+                            /* Physical multiplier skill */
+                            int dmg = (hero->atk * sk->power) / 10 - bc->enemy.def;
+                            int variance = (int)(battle_rand() % 5) - 2;
+                            dmg += variance;
+                            if (dmg < 1) dmg = 1;
+                            bc->enemy.hp -= (int16_t)dmg;
+                            bc->damage_display = (int16_t)dmg;
+                            fx_spawn(FX_DAMAGE_NUM, 116, 10, dmg, 30);
+                            fx_spawn(FX_HIT_FLASH, 0, 0, 0, 6);
+                            snprintf(bc->message, sizeof(bc->message),
+                                     "%s! %d damage!", sk->name, dmg);
+                            if (bc->enemy.hp <= 0) bc->enemy.hp = 0;
+                            bc->state = BATTLE_EXECUTE;
+                            bc->turn_timer = 1;
+                        } else if (sk->type == 1) {
+                            /* Magic fixed damage */
+                            int dmg = sk->power + hero->atk / 3 - bc->enemy.def / 3;
+                            if (dmg < 1) dmg = 1;
+                            bc->enemy.hp -= (int16_t)dmg;
+                            bc->damage_display = (int16_t)dmg;
+                            fx_spawn(FX_DAMAGE_NUM, 116, 10, dmg, 30);
+                            fx_spawn(FX_HIT_FLASH, 0, 0, 0, 6);
+                            snprintf(bc->message, sizeof(bc->message),
+                                     "%s! %d damage!", sk->name, dmg);
+                            if (bc->enemy.hp <= 0) bc->enemy.hp = 0;
+                            bc->state = BATTLE_EXECUTE;
+                            bc->turn_timer = 1;
+                        } else if (sk->type == 2) {
+                            /* Berserk: double ATK, DEF=0 for this exchange */
+                            int dmg = hero->atk * 2 - bc->enemy.def;
+                            int variance = (int)(battle_rand() % 5) - 2;
+                            dmg += variance;
+                            if (dmg < 1) dmg = 1;
+                            bc->enemy.hp -= (int16_t)dmg;
+                            bc->damage_display = (int16_t)dmg;
+                            bc->berserk_active = true;
+                            fx_spawn(FX_DAMAGE_NUM, 116, 10, dmg, 30);
+                            fx_spawn(FX_HIT_FLASH, 0, 0, 0, 6);
+                            snprintf(bc->message, sizeof(bc->message),
+                                     "Berserk! %d damage!", dmg);
+                            if (bc->enemy.hp <= 0) bc->enemy.hp = 0;
+                            bc->state = BATTLE_EXECUTE;
+                            bc->turn_timer = 1;
+                        } else if (sk->type == 3) {
+                            /* Revive: heal a fallen party member */
+                            bool revived = false;
+                            if (bc->party) {
+                                for (int pi = 0; pi < bc->party->count; pi++) {
+                                    Character *m = &bc->party->members[pi];
+                                    if (m->hp <= 0) {
+                                        m->hp = (int16_t)((m->max_hp * sk->power) / 100);
+                                        if (m->hp < 1) m->hp = 1;
+                                        fx_spawn(FX_HEAL, 40, 120, m->hp, 24);
+                                        snprintf(bc->message, sizeof(bc->message),
+                                                 "%s revived! %dHP", m->name, m->hp);
+                                        revived = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!revived) {
+                                hero->mp += sk->mp_cost; /* refund */
+                                snprintf(bc->message, sizeof(bc->message),
+                                         "No fallen allies!");
+                            }
+                            bc->state = BATTLE_ENEMY_TURN;
+                            bc->turn_timer = 0;
+                        }
+                    }
+                }
+                break;
+            }
+
             case CMD_FLEE: {
                 /* 50% chance modified by speed comparison */
                 int flee_chance = 50 + (hero->spd - bc->enemy.spd) * 5;
@@ -250,6 +352,13 @@ void battle_update(BattleContext *bc, Character *hero) {
                 }
             }
         }
+        break;
+
+    /* ── BATTLE_SKILL_SELECT: reserved for future multi-skill selection ── */
+    case BATTLE_SKILL_SELECT:
+        /* Currently skills are used directly via CMD_SKILL.
+           This state is reserved for future expansion. */
+        bc->state = BATTLE_COMMAND;
         break;
 
     /* ── BATTLE_ITEM_SELECT: choose an item to use ──────── */
@@ -356,8 +465,51 @@ void battle_update(BattleContext *bc, Character *hero) {
                 bc->state = BATTLE_WIN;
                 bc->turn_timer = 0;
             } else {
+                /* Party members auto-attack before enemy turn */
+                if (bc->party && bc->party->count > 1) {
+                    bc->party_turn_idx = 1; /* start from 2nd member */
+                    bc->state = BATTLE_PARTY_TURN;
+                } else {
+                    bc->state = BATTLE_ENEMY_TURN;
+                }
+            }
+        }
+        break;
+
+    /* ── BATTLE_PARTY_TURN: party members auto-attack ── */
+    case BATTLE_PARTY_TURN:
+        if (bc->turn_timer == 0 && bc->party) {
+            /* Find next alive party member */
+            while (bc->party_turn_idx < bc->party->count &&
+                   bc->party->members[bc->party_turn_idx].hp <= 0) {
+                bc->party_turn_idx++;
+            }
+            if (bc->party_turn_idx >= bc->party->count || bc->enemy.hp <= 0) {
+                /* All party members acted or enemy dead */
+                bc->state = (bc->enemy.hp <= 0) ? BATTLE_WIN : BATTLE_ENEMY_TURN;
+                bc->turn_timer = 0;
+                break;
+            }
+            Character *m = &bc->party->members[bc->party_turn_idx];
+            int dmg = battle_calc_damage(m->atk, bc->enemy.def);
+            if (dmg < 1) dmg = 1;
+            bc->enemy.hp -= (int16_t)dmg;
+            bc->damage_display = (int16_t)dmg;
+            fx_spawn(FX_DAMAGE_NUM, 116, 14, dmg, 20);
+            snprintf(bc->message, sizeof(bc->message),
+                     "%s attacks for %d!", m->name, dmg);
+            if (bc->enemy.hp <= 0) bc->enemy.hp = 0;
+        }
+        bc->turn_timer++;
+        if (bc->turn_timer >= 20) {
+            bc->turn_timer = 0;
+            bc->party_turn_idx++;
+            if (bc->enemy.hp <= 0) {
+                bc->state = BATTLE_WIN;
+            } else if (bc->party_turn_idx >= bc->party->count) {
                 bc->state = BATTLE_ENEMY_TURN;
             }
+            /* else: stay in BATTLE_PARTY_TURN for next member */
         }
         break;
 
@@ -388,7 +540,13 @@ void battle_update(BattleContext *bc, Character *hero) {
             }
 
             if (bc->turn_timer == 0) {
-                int dmg = battle_calc_damage(bc->enemy.atk, hero->def);
+                int hero_def = hero->def;
+                /* Berserk penalty: DEF=0 for this enemy attack */
+                if (bc->berserk_active) {
+                    hero_def = 0;
+                    bc->berserk_active = false;
+                }
+                int dmg = battle_calc_damage(bc->enemy.atk, hero_def);
 
                 /* Boss AI special attacks */
                 bool is_fire_dragon = (bc->enemy.sprite_id == 23);
@@ -397,7 +555,7 @@ void battle_update(BattleContext *bc, Character *hero) {
 
                 if (is_fire_dragon && (bc->boss_turn_count % 3 == 0)) {
                     /* Fire Breath: 2x damage every 3rd turn */
-                    dmg = battle_calc_damage(bc->enemy.atk * 2, hero->def);
+                    dmg = battle_calc_damage(bc->enemy.atk * 2, hero_def);
                     snprintf(bc->message, sizeof(bc->message),
                              "Fire Breath! %d damage!", dmg);
                 } else if (is_kraken && (bc->boss_turn_count % 4 == 0)) {
@@ -407,7 +565,7 @@ void battle_update(BattleContext *bc, Character *hero) {
                              "Tentacle Grab! %d dmg! Stunned!", dmg);
                 } else if (is_sky_lord && (bc->boss_turn_count % 2 == 0)) {
                     /* Thunder Storm: hits all party (deal damage to hero + party) */
-                    dmg = battle_calc_damage(bc->enemy.atk, hero->def / 2);
+                    dmg = battle_calc_damage(bc->enemy.atk, hero_def / 2);
                     /* Damage party members too */
                     if (bc->party) {
                         for (int pi = 1; pi < bc->party->count; pi++) {
@@ -605,11 +763,12 @@ void battle_render(BattleContext *bc, Character *hero) {
     }
 
     /* ── Damage display ───────────────────────────────── */
-    if ((bc->state == BATTLE_EXECUTE || bc->state == BATTLE_ENEMY_TURN)
+    if ((bc->state == BATTLE_EXECUTE || bc->state == BATTLE_ENEMY_TURN
+         || bc->state == BATTLE_PARTY_TURN)
         && bc->turn_timer < 30) {
         char dmg_text[12];
         snprintf(dmg_text, sizeof(dmg_text), "%d", bc->damage_display);
-        if (bc->state == BATTLE_EXECUTE) {
+        if (bc->state == BATTLE_EXECUTE || bc->state == BATTLE_PARTY_TURN) {
             /* Damage on enemy */
             platform_draw_text(116, 10, dmg_text, 0x001F); /* red */
         } else {

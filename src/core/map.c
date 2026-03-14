@@ -839,14 +839,20 @@ static void load_island_6(MapData *map) {
 
     map->entity_count = 0;
 
-    /* Event triggers — no port on final island */
-    map->trigger_count = 3;
+    /* Add a port tile at south edge for return travel */
+    map->tiles[17][6] = TILE_PORT;
+    map->tiles[17][7] = TILE_SAND;
+
+    /* Event triggers */
+    map->trigger_count = 4;
     /* Final treasure chest — item_id 12 (Sky Scepter) */
     map->triggers[0] = (EventTrigger){ 15, 5, EVENT_CHEST, 12, false };
     /* Boss trigger in boss room */
     map->triggers[1] = (EventTrigger){ 15, 6, EVENT_BOSS, 2, false };
     /* Sign at temple entrance */
     map->triggers[2] = (EventTrigger){ 15, 15, EVENT_SIGN, 12, false };
+    /* Port for return travel (opens island select) */
+    map->triggers[3] = (EventTrigger){ 6, 17, EVENT_PORT, 5, false };
 }
 
 /* ── Public Functions ─────────────────────────────────── */

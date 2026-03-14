@@ -12,7 +12,9 @@ typedef enum {
     BATTLE_COMMAND,
     BATTLE_MAGIC_SELECT,
     BATTLE_ITEM_SELECT,
+    BATTLE_SKILL_SELECT,
     BATTLE_EXECUTE,
+    BATTLE_PARTY_TURN,
     BATTLE_ENEMY_TURN,
     BATTLE_RESULT,
     BATTLE_WIN,
@@ -25,6 +27,7 @@ typedef enum {
     CMD_MAGIC,
     CMD_DEFEND,
     CMD_ITEM,
+    CMD_SKILL,
     CMD_FLEE,
     CMD_COUNT,
 } BattleCommand;
@@ -69,6 +72,8 @@ typedef struct {
     uint8_t       boss_turn_count; /* tracks boss AI turn patterns */
     bool          hero_stunned;    /* true if hero is stunned this turn */
     uint8_t       island;         /* current island for scaling */
+    uint8_t       party_turn_idx; /* which party member is acting in PARTY_TURN */
+    bool          berserk_active; /* Drake's berserk: next turn DEF=0 */
 } BattleContext;
 
 /* ── Functions ────────────────────────────────────────── */

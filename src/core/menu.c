@@ -13,6 +13,7 @@
 static const char *menu_labels[MENU_COUNT] = {
     "Items",
     "Status",
+    "Party",
     "Save",
     "Load",
     "Quit"
@@ -117,6 +118,11 @@ void menu_update(MenuContext *menu, GameContext *ctx) {
                 break;
             case MENU_STATUS:
                 g_show_status = true;
+                break;
+            case MENU_PARTY:
+                menu->open = false;
+                ctx->status_cursor = 0;
+                ctx->state = STATE_STATUS;
                 break;
             case MENU_SAVE:
                 menu->open = false;

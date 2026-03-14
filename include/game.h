@@ -17,6 +17,8 @@ typedef enum {
     STATE_INVENTORY,
     STATE_SAVE,
     STATE_SHOP,
+    STATE_PORT_SELECT,
+    STATE_STATUS,
     STATE_GAME_OVER,
 } GameState;
 
@@ -39,6 +41,7 @@ typedef struct {
     uint8_t  sprite_id;
     int8_t   weapon_id;  /* -1 = none, 13-15 = weapons */
     int8_t   armor_id;   /* -1 = none, 16-18 = armors */
+    uint8_t  skill_id;   /* character-specific skill (0-3) */
 } Character;
 
 /* ── Party ─────────────────────────────────────────────── */
@@ -91,6 +94,10 @@ typedef struct {
     uint8_t     save_cursor;      /* save slot selection cursor */
     uint8_t     shop_cursor;      /* shop screen cursor */
     uint8_t     shop_mode;        /* 0 = buy, 1 = sell */
+    uint8_t     port_cursor;      /* port island selection cursor */
+    uint8_t     visited_islands;  /* bitmask of visited islands */
+    uint8_t     quest_flags[8];   /* quest state flags */
+    uint8_t     status_cursor;    /* status screen scroll position */
     bool        running;
     bool        victory;          /* true = all treasures, false = defeat */
     char        drop_msg[48];     /* item drop message after battle */
@@ -115,6 +122,10 @@ void state_save_update(GameContext *ctx);
 void state_save_render(GameContext *ctx);
 void state_shop_update(GameContext *ctx);
 void state_shop_render(GameContext *ctx);
+void state_port_select_update(GameContext *ctx);
+void state_port_select_render(GameContext *ctx);
+void state_status_update(GameContext *ctx);
+void state_status_render(GameContext *ctx);
 void state_game_over_update(GameContext *ctx);
 void state_game_over_render(GameContext *ctx);
 

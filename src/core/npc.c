@@ -50,7 +50,7 @@ void npc_init_map(uint8_t map_id) {
         case 0: /* Starter Town */
             npc_add(NPC_VILLAGER,   10, 8,  1, 0, "Villager");
             npc_add(NPC_SHOPKEEPER, 15, 5,  2, 1, "Merchant");
-            npc_add(NPC_SAGE,       20, 12, 3, 2, "Old Sage");
+            npc_add(NPC_SAGE,       20, 12, 3, 13, "Old Sage");
             npc_add(NPC_VILLAGER,   5,  14, 4, 3, "Fisher");
             break;
 

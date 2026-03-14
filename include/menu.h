@@ -10,6 +10,7 @@
 typedef enum {
     MENU_ITEMS,
     MENU_STATUS,
+    MENU_PARTY,
     MENU_SAVE,
     MENU_LOAD,
     MENU_QUIT,

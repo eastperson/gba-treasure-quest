@@ -9,6 +9,10 @@
 /* ── State ─────────────────────────────────────────────── */
 static DialogueScript g_current;
 static bool           g_active;
+static int            g_choice_result; /* -1=no choice made, 0=Yes, 1=No */
+static uint8_t        g_choice_cursor; /* 0=Yes, 1=No */
+static bool           g_showing_choice;
+static uint8_t       *g_quest_flags;   /* pointer to game's quest flags */
 
 /* ── Dialogue Database ─────────────────────────────────── */
 static const DialogueScript g_dialogues[MAX_DIALOGUES] = {
@@ -109,7 +113,30 @@ static const DialogueScript g_dialogues[MAX_DIALOGUES] = {
     /* 12: Sky Temple entrance sign */
     [12] = {
         .lines = {
-            { "The Sky Temple awaits.\nFinal trial lies within.", "Sign" },
+            { "The Sky Temple awaits.\nFinal trial lies within.", "Sign", false, 0, 0, 0xFF },
+        },
+        .line_count = 1,
+    },
+    /* 13: Sage treasure hint quest (with choice) */
+    [13] = {
+        .lines = {
+            { "I know where a treasure\nlies hidden...", "Sage", false, 0, 0, 0xFF },
+            { "Shall I share the secret\nwith you?", "Sage", true, 14, 15, 0xFF },
+        },
+        .line_count = 2,
+    },
+    /* 14: Sage yes response — gives hint + sets flag 0 */
+    [14] = {
+        .lines = {
+            { "The Coral Crown rests in\nthe town's old building.", "Sage", false, 0, 0, 0 },
+            { "Look for the chest inside\nthe northern house!", "Sage", false, 0, 0, 0xFF },
+        },
+        .line_count = 2,
+    },
+    /* 15: Sage no response */
+    [15] = {
+        .lines = {
+            { "Very well. Come back if\nyou change your mind.", "Sage", false, 0, 0, 0xFF },
         },
         .line_count = 1,
     },
@@ -220,15 +247,31 @@ static const DialogueScript g_dialogues[MAX_DIALOGUES] = {
 void dialogue_init(void) {
     memset(&g_current, 0, sizeof(g_current));
     g_active = false;
+    g_choice_result = -1;
+    g_choice_cursor = 0;
+    g_showing_choice = false;
+    g_quest_flags = NULL;
 }
 
 void dialogue_start(int dialogue_id) {
+    dialogue_start_with_flags(dialogue_id, NULL);
+}
+
+void dialogue_start_with_flags(int dialogue_id, uint8_t *quest_flags) {
     if (dialogue_id < 0 || dialogue_id >= MAX_DIALOGUES) return;
     if (g_dialogues[dialogue_id].line_count == 0) return;
 
+    g_quest_flags = quest_flags;
     g_current = g_dialogues[dialogue_id];
     g_current.current_line = 0;
     g_active = true;
+    g_choice_result = -1;
+    g_choice_cursor = 0;
+    g_showing_choice = false;
+}
+
+int dialogue_get_choice_result(void) {
+    return g_choice_result;
 }
 
 bool dialogue_update(void) {
@@ -236,7 +279,59 @@ bool dialogue_update(void) {
 
     uint16_t keys = platform_keys_pressed();
 
+    /* If showing a choice, handle choice input */
+    if (g_showing_choice) {
+        if (keys & KEY_UP) { g_choice_cursor = 0; }
+        if (keys & KEY_DOWN) { g_choice_cursor = 1; }
+        if (keys & KEY_A) {
+            const DialogueLine *line = &g_current.lines[g_current.current_line];
+            g_choice_result = g_choice_cursor;
+            g_showing_choice = false;
+
+            /* Jump to the appropriate follow-up dialogue */
+            uint8_t next_id = (g_choice_cursor == 0) ? line->yes_next : line->no_next;
+            if (next_id < MAX_DIALOGUES && g_dialogues[next_id].line_count > 0) {
+                g_current = g_dialogues[next_id];
+                g_current.current_line = 0;
+            } else {
+                g_active = false;
+                return false;
+            }
+        }
+        if (keys & KEY_B) {
+            /* B = No */
+            const DialogueLine *line = &g_current.lines[g_current.current_line];
+            g_choice_result = 1;
+            g_showing_choice = false;
+
+            uint8_t next_id = line->no_next;
+            if (next_id < MAX_DIALOGUES && g_dialogues[next_id].line_count > 0) {
+                g_current = g_dialogues[next_id];
+                g_current.current_line = 0;
+            } else {
+                g_active = false;
+                return false;
+            }
+        }
+        return true;
+    }
+
     if (keys & KEY_A) {
+        /* Set quest flag if this line has one */
+        const DialogueLine *cur = &g_current.lines[g_current.current_line];
+        if (cur->quest_flag_set != 0xFF && g_quest_flags) {
+            if (cur->quest_flag_set < 8) {
+                g_quest_flags[cur->quest_flag_set] = 1;
+            }
+        }
+
+        /* Check if current line has a choice */
+        if (cur->has_choice) {
+            g_showing_choice = true;
+            g_choice_cursor = 0;
+            return true;
+        }
+
         g_current.current_line++;
         if (g_current.current_line >= g_current.line_count) {
             g_active = false;
@@ -274,9 +369,22 @@ void dialogue_render(void) {
     /* Text in white */
     platform_draw_text(14, 126, line->text, 0x7FFF);
 
-    /* "v" indicator if more lines remain */
-    if (g_current.current_line < g_current.line_count - 1) {
-        platform_draw_text(220, 144, "v", 0x7FFF);
+    /* Show Yes/No choice if applicable */
+    if (g_showing_choice) {
+        platform_draw_rect(180, 96, 50, 24, 0x5000);
+        platform_draw_rect(180, 96, 50, 1, 0x6318);
+        platform_draw_rect(180, 119, 50, 1, 0x6318);
+        platform_draw_rect(180, 96, 1, 24, 0x6318);
+        platform_draw_rect(229, 96, 1, 24, 0x6318);
+
+        platform_draw_text(196, 100, "Yes", g_choice_cursor == 0 ? 0x03FF : 0x5294);
+        platform_draw_text(196, 112, "No",  g_choice_cursor == 1 ? 0x03FF : 0x5294);
+        platform_draw_text(186, g_choice_cursor == 0 ? 100 : 112, ">", 0x03FF);
+    } else {
+        /* "v" indicator if more lines remain */
+        if (g_current.current_line < g_current.line_count - 1) {
+            platform_draw_text(220, 144, "v", 0x7FFF);
+        }
     }
 }
 

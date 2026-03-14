@@ -52,6 +52,7 @@ void game_init(GameContext *ctx) {
     hero->sprite_id = 0;
     hero->weapon_id = -1;
     hero->armor_id  = -1;
+    hero->skill_id  = 0;  /* Power Slash */
     ctx->party.count = 1;
     ctx->party.gold  = 100;
 
@@ -63,7 +64,11 @@ void game_init(GameContext *ctx) {
 
     ctx->current_island  = 0;
     ctx->treasures_found = 0;
+    ctx->visited_islands = 0x01;  /* Island 0 visited at start */
     ctx->inv_cursor      = 0;
+    ctx->port_cursor     = 0;
+    ctx->status_cursor   = 0;
+    memset(ctx->quest_flags, 0, sizeof(ctx->quest_flags));
 
     /* Initialize inventory with starting items */
     inventory_init(&ctx->inventory);
@@ -128,6 +133,12 @@ void game_update(GameContext *ctx) {
         case STATE_SHOP:
             state_shop_update(ctx);
             break;
+        case STATE_PORT_SELECT:
+            state_port_select_update(ctx);
+            break;
+        case STATE_STATUS:
+            state_status_update(ctx);
+            break;
         case STATE_GAME_OVER:
             state_game_over_update(ctx);
             break;
@@ -156,6 +167,12 @@ void game_render(GameContext *ctx) {
             break;
         case STATE_SHOP:
             state_shop_render(ctx);
+            break;
+        case STATE_PORT_SELECT:
+            state_port_select_render(ctx);
+            break;
+        case STATE_STATUS:
+            state_status_render(ctx);
             break;
         case STATE_GAME_OVER:
             state_game_over_render(ctx);
@@ -211,7 +228,7 @@ void state_title_render(GameContext *ctx) {
     }
 
     /* Credits */
-    platform_draw_text(56, 132, "Sprint 19 Edition", 0x294A);
+    platform_draw_text(56, 132, "Sprint 20 Edition", 0x294A);
 }
 
 /* ── World / Overworld ─────────────────────────────────── */
@@ -256,7 +273,7 @@ void state_world_update(GameContext *ctx) {
                 ctx->shop_cursor = 0;
                 ctx->state = STATE_SHOP;
             } else {
-                dialogue_start(npc->dialogue_id);
+                dialogue_start_with_flags(npc->dialogue_id, ctx->quest_flags);
                 ctx->state = STATE_DIALOGUE;
             }
         }
@@ -292,69 +309,18 @@ void state_world_update(GameContext *ctx) {
                     break;
 
                 case EVENT_PORT: {
-                    /* Warp to another island */
-                    uint8_t dest_map = trig->id;
+                    /* Open island selection UI instead of auto-warp */
                     audio_play_sfx(SFX_DOOR);
-
-                    /* Party recruitment events when leaving certain islands */
-                    /* Island 1 (Dark Forest) -> recruit Elara (Mage) */
-                    if (ctx->current_island == 1 && dest_map != 1 && ctx->party.count < MAX_PARTY_SIZE) {
-                        /* Check if Elara not already in party */
-                        bool found = false;
-                        for (int pi = 0; pi < ctx->party.count; pi++) {
-                            if (ctx->party.members[pi].name[0] == 'E' &&
-                                ctx->party.members[pi].name[1] == 'l') {
-                                found = true; break;
-                            }
-                        }
-                        if (!found) {
-                            party_add_member(&ctx->party, "Elara",
-                                25, 30, 5, 4, 7, 1);
-                            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
-                            ctx->party.members[ctx->party.count - 1].armor_id = -1;
+                    /* Mark next island as visitable (unlock progression) */
+                    {
+                        uint8_t next = trig->id;
+                        if (next < 7) {
+                            ctx->visited_islands |= (1 << next);
                         }
                     }
-                    /* Island 3 (Volcanic Coast) -> recruit Drake (Fighter) */
-                    if (ctx->current_island == 3 && dest_map != 3 && ctx->party.count < MAX_PARTY_SIZE) {
-                        bool found = false;
-                        for (int pi = 0; pi < ctx->party.count; pi++) {
-                            if (ctx->party.members[pi].name[0] == 'D' &&
-                                ctx->party.members[pi].name[1] == 'r') {
-                                found = true; break;
-                            }
-                        }
-                        if (!found) {
-                            party_add_member(&ctx->party, "Drake",
-                                45, 8, 14, 8, 5, 2);
-                            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
-                            ctx->party.members[ctx->party.count - 1].armor_id = -1;
-                        }
-                    }
-                    /* Island 5 (Sunken Ruins) -> recruit Naia (Healer) */
-                    if (ctx->current_island == 5 && dest_map != 5 && ctx->party.count < MAX_PARTY_SIZE) {
-                        bool found = false;
-                        for (int pi = 0; pi < ctx->party.count; pi++) {
-                            if (ctx->party.members[pi].name[0] == 'N' &&
-                                ctx->party.members[pi].name[1] == 'a') {
-                                found = true; break;
-                            }
-                        }
-                        if (!found) {
-                            party_add_member(&ctx->party, "Naia",
-                                28, 35, 4, 5, 6, 3);
-                            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
-                            ctx->party.members[ctx->party.count - 1].armor_id = -1;
-                        }
-                    }
-
-                    map_load(&g_map, dest_map);
-                    npc_init_map(dest_map);
-                    ctx->pos.x = g_map.spawn_x;
-                    ctx->pos.y = g_map.spawn_y;
-                    ctx->pos.map_id = dest_map;
-                    ctx->current_island = dest_map;
-                    audio_set_bgm_for_island(dest_map);
-                    transition_start(TRANS_FADE_OUT, 15, STATE_WORLD);
+                    ctx->port_cursor = 0;
+                    ctx->state = STATE_PORT_SELECT;
+                    /* Don't mark trigger as triggered — ports are reusable */
                     break;
                 }
 
@@ -832,6 +798,209 @@ void state_shop_render(GameContext *ctx) {
     }
 }
 
+/* ── Island Names Table ───────────────────────────────── */
+static const char *island_names[7] = {
+    "Starter Town",
+    "Dark Forest",
+    "Desert Oasis",
+    "Volcanic Coast",
+    "Frozen Peaks",
+    "Sunken Ruins",
+    "Sky Temple",
+};
+
+/* ── Port Warp Helper (handles recruitment + map load) ── */
+static void port_warp_to_island(GameContext *ctx, uint8_t dest_map) {
+    /* Party recruitment events when leaving certain islands */
+    /* Island 1 (Dark Forest) -> recruit Elara (Mage) */
+    if (ctx->current_island == 1 && dest_map != 1 && ctx->party.count < MAX_PARTY_SIZE) {
+        bool found = false;
+        for (int pi = 0; pi < ctx->party.count; pi++) {
+            if (ctx->party.members[pi].name[0] == 'E' &&
+                ctx->party.members[pi].name[1] == 'l') {
+                found = true; break;
+            }
+        }
+        if (!found) {
+            party_add_member(&ctx->party, "Elara",
+                25, 30, 5, 4, 7, 1);
+            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
+            ctx->party.members[ctx->party.count - 1].armor_id = -1;
+            ctx->party.members[ctx->party.count - 1].skill_id = 1; /* Arcane Burst */
+        }
+    }
+    /* Island 3 (Volcanic Coast) -> recruit Drake (Fighter) */
+    if (ctx->current_island == 3 && dest_map != 3 && ctx->party.count < MAX_PARTY_SIZE) {
+        bool found = false;
+        for (int pi = 0; pi < ctx->party.count; pi++) {
+            if (ctx->party.members[pi].name[0] == 'D' &&
+                ctx->party.members[pi].name[1] == 'r') {
+                found = true; break;
+            }
+        }
+        if (!found) {
+            party_add_member(&ctx->party, "Drake",
+                45, 8, 14, 8, 5, 2);
+            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
+            ctx->party.members[ctx->party.count - 1].armor_id = -1;
+            ctx->party.members[ctx->party.count - 1].skill_id = 2; /* Berserk */
+        }
+    }
+    /* Island 5 (Sunken Ruins) -> recruit Naia (Healer) */
+    if (ctx->current_island == 5 && dest_map != 5 && ctx->party.count < MAX_PARTY_SIZE) {
+        bool found = false;
+        for (int pi = 0; pi < ctx->party.count; pi++) {
+            if (ctx->party.members[pi].name[0] == 'N' &&
+                ctx->party.members[pi].name[1] == 'a') {
+                found = true; break;
+            }
+        }
+        if (!found) {
+            party_add_member(&ctx->party, "Naia",
+                28, 35, 4, 5, 6, 3);
+            ctx->party.members[ctx->party.count - 1].weapon_id = -1;
+            ctx->party.members[ctx->party.count - 1].armor_id = -1;
+            ctx->party.members[ctx->party.count - 1].skill_id = 3; /* Revive */
+        }
+    }
+
+    map_load(&g_map, dest_map);
+    npc_init_map(dest_map);
+    ctx->pos.x = g_map.spawn_x;
+    ctx->pos.y = g_map.spawn_y;
+    ctx->pos.map_id = dest_map;
+    ctx->current_island = dest_map;
+    ctx->visited_islands |= (1 << dest_map);
+    audio_set_bgm_for_island(dest_map);
+    transition_start(TRANS_FADE_OUT, 15, STATE_WORLD);
+}
+
+/* ── Port Selection Screen ────────────────────────────── */
+void state_port_select_update(GameContext *ctx) {
+    uint16_t keys = platform_keys_pressed();
+
+    if (keys & KEY_UP) {
+        if (ctx->port_cursor > 0) ctx->port_cursor--;
+    }
+    if (keys & KEY_DOWN) {
+        if (ctx->port_cursor < 6) ctx->port_cursor++;
+    }
+    if (keys & KEY_A) {
+        uint8_t dest = ctx->port_cursor;
+        /* Can only travel to visited islands, and not current island */
+        if ((ctx->visited_islands & (1 << dest)) && dest != ctx->current_island) {
+            audio_play_sfx(SFX_CONFIRM);
+            port_warp_to_island(ctx, dest);
+        } else {
+            audio_play_sfx(SFX_CANCEL);
+        }
+    }
+    if (keys & KEY_B) {
+        ctx->state = STATE_WORLD;
+    }
+}
+
+void state_port_select_render(GameContext *ctx) {
+    platform_clear(0x0000);
+    platform_draw_rect(16, 8, 208, 144, 0x0842);
+
+    platform_draw_text(60, 12, "SELECT DESTINATION", 0x03FF);
+
+    for (int i = 0; i < 7; i++) {
+        int y = 30 + i * 14;
+        bool visited = (ctx->visited_islands & (1 << i)) != 0;
+        bool is_current = (i == ctx->current_island);
+        uint16_t color;
+
+        if (i == ctx->port_cursor) {
+            platform_draw_text(20, y, ">", 0x03FF);
+            color = visited ? 0x03FF : 0x294A;
+        } else {
+            color = visited ? 0x7FFF : 0x294A;
+        }
+
+        char line[32];
+        if (is_current) {
+            snprintf(line, sizeof(line), "%-16s [HERE]", island_names[i]);
+        } else if (visited) {
+            snprintf(line, sizeof(line), "%-16s  [*]", island_names[i]);
+        } else {
+            snprintf(line, sizeof(line), "%-16s  [ ]", island_names[i]);
+        }
+        platform_draw_text(32, y, line, color);
+    }
+
+    /* Footer */
+    platform_draw_rect(16, 134, 208, 18, 0x0421);
+    platform_draw_text(20, 136, "[*]=Visited [ ]=Locked", 0x5EF7);
+    platform_draw_text(20, 146, "[A]Go  [B]Cancel", 0x5294);
+}
+
+/* ── Status Screen ────────────────────────────────────── */
+/* Character skill names */
+static const char *skill_names[4] = {
+    "Power Slash",   /* Hero — physical 1.8x ATK */
+    "Arcane Burst",  /* Elara — magic 25 damage */
+    "Berserk",       /* Drake — ATKx2, DEF=0 next turn */
+    "Revive",        /* Naia — revive fallen ally 30% HP */
+};
+
+void state_status_update(GameContext *ctx) {
+    uint16_t keys = platform_keys_pressed();
+
+    if (keys & KEY_UP) {
+        if (ctx->status_cursor > 0) ctx->status_cursor--;
+    }
+    if (keys & KEY_DOWN) {
+        if (ctx->status_cursor < ctx->party.count - 1) ctx->status_cursor++;
+    }
+    if (keys & KEY_B) {
+        ctx->state = STATE_MENU;
+    }
+}
+
+void state_status_render(GameContext *ctx) {
+    platform_clear(0x0000);
+    platform_draw_rect(8, 4, 224, 152, 0x0842);
+
+    platform_draw_text(76, 8, "PARTY STATUS", 0x03FF);
+
+    for (int i = 0; i < ctx->party.count && i < MAX_PARTY_SIZE; i++) {
+        Character *ch = &ctx->party.members[i];
+        int base_y = 22 + i * 32;
+        uint16_t name_color = (i == ctx->status_cursor) ? 0x03FF : 0x7FFF;
+
+        /* Name and level */
+        char line1[40];
+        snprintf(line1, sizeof(line1), "%s  Lv%d", ch->name, ch->level);
+        platform_draw_text(12, base_y, line1, name_color);
+
+        /* HP/MP */
+        char line2[40];
+        snprintf(line2, sizeof(line2), "HP:%d/%d MP:%d/%d EXP:%d",
+                 ch->hp, ch->max_hp, ch->mp, ch->max_mp, ch->exp);
+        platform_draw_text(16, base_y + 10, line2, 0x5EF7);
+
+        /* ATK/DEF/SPD + Equipment + Skill */
+        char line3[48];
+        const char *wpn = (ch->weapon_id >= 0)
+            ? inventory_get_item_data(ch->weapon_id)->name : "None";
+        snprintf(line3, sizeof(line3), "ATK:%d DEF:%d SPD:%d W:%s",
+                 ch->atk, ch->def, ch->spd, wpn);
+        platform_draw_text(16, base_y + 20, line3, 0x5294);
+    }
+
+    /* Footer with skill info for selected character */
+    if (ctx->status_cursor < ctx->party.count) {
+        Character *sel = &ctx->party.members[ctx->status_cursor];
+        char skill_line[40];
+        snprintf(skill_line, sizeof(skill_line), "Skill: %s",
+                 (sel->skill_id < 4) ? skill_names[sel->skill_id] : "None");
+        platform_draw_rect(8, 148, 224, 10, 0x0421);
+        platform_draw_text(12, 149, skill_line, 0x03FF);
+    }
+}
+
 /* ── Game Over Screen ─────────────────────────────────── */
 void state_game_over_update(GameContext *ctx) {
     uint16_t keys = platform_keys_pressed();
@@ -844,20 +1013,53 @@ void state_game_over_render(GameContext *ctx) {
     platform_clear(0x0000);
     if (ctx->victory) {
         /* Victory screen */
-        platform_draw_text(40, 40, "CONGRATULATIONS!", 0x03FF);
-        platform_draw_text(28, 60, "All 7 treasures found!", 0x7FFF);
-        platform_draw_text(36, 80, "You are the true", 0x5EF7);
-        platform_draw_text(36, 92, "Treasure Hunter!", 0x5EF7);
+        platform_draw_text(40, 20, "CONGRATULATIONS!", 0x03FF);
+        platform_draw_text(28, 36, "All 7 treasures found!", 0x7FFF);
+        platform_draw_text(36, 50, "You are the true", 0x5EF7);
+        platform_draw_text(36, 62, "Treasure Hunter!", 0x5EF7);
         treasure_render_status(ctx);
+
+        /* Statistics */
+        {
+            Character *h = &ctx->party.members[0];
+            char stat1[40], stat2[40], stat3[40];
+            int minutes = (int)(ctx->frame_count / 3600);
+            int seconds = (int)((ctx->frame_count / 60) % 60);
+            snprintf(stat1, sizeof(stat1), "Time: %d:%02d", minutes, seconds);
+            snprintf(stat2, sizeof(stat2), "Hero Lv%d  Party: %d members", h->level, ctx->party.count);
+            snprintf(stat3, sizeof(stat3), "Treasures: %d/7  Gold: %d",
+                     treasure_get_count(ctx), ctx->party.gold);
+            platform_draw_text(60, 84, stat1, 0x5294);
+            platform_draw_text(28, 96, stat2, 0x5294);
+            platform_draw_text(28, 108, stat3, 0x5294);
+        }
+
         if ((ctx->frame_count / 30) % 2 == 0) {
-            platform_draw_text(48, 130, "PRESS START", 0x7FFF);
+            platform_draw_text(48, 136, "PRESS START", 0x7FFF);
         }
     } else {
         /* Defeat screen */
-        platform_draw_text(64, 60, "GAME OVER", 0x001F);
-        platform_draw_text(44, 80, "Your quest ends here...", 0x5294);
+        platform_draw_text(64, 40, "GAME OVER", 0x001F);
+        platform_draw_text(44, 60, "Your quest ends here...", 0x5294);
+
+        /* Statistics */
+        {
+            Character *h = &ctx->party.members[0];
+            char stat1[40], stat2[40], stat3[40];
+            int minutes = (int)(ctx->frame_count / 3600);
+            int seconds = (int)((ctx->frame_count / 60) % 60);
+            snprintf(stat1, sizeof(stat1), "Time: %d:%02d", minutes, seconds);
+            snprintf(stat2, sizeof(stat2), "Hero Lv%d  Party: %d members", h->level, ctx->party.count);
+            snprintf(stat3, sizeof(stat3), "Treasures: %d/7  Islands: %d",
+                     treasure_get_count(ctx),
+                     (int)__builtin_popcount(ctx->visited_islands));
+            platform_draw_text(60, 80, stat1, 0x5294);
+            platform_draw_text(28, 92, stat2, 0x5294);
+            platform_draw_text(28, 104, stat3, 0x5294);
+        }
+
         if ((ctx->frame_count / 30) % 2 == 0) {
-            platform_draw_text(48, 110, "PRESS START", 0x7FFF);
+            platform_draw_text(48, 130, "PRESS START", 0x7FFF);
         }
     }
 }
