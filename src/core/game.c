@@ -553,6 +553,9 @@ void state_world_render(GameContext *ctx) {
     /* Draw tilemap */
     map_draw(&g_map, cam_x, cam_y);
 
+    /* Draw atmosphere overlays: lava glow, snow particles (Sprint 23) */
+    map_draw_atmosphere(&g_map, cam_x, cam_y, ctx->frame_count, ctx->current_island);
+
     /* Draw NPCs */
     npc_draw(cam_x, cam_y);
 

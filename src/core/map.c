@@ -9,6 +9,9 @@
 /* ── Tile Size ────────────────────────────────────────── */
 #define TILE_SIZE 8
 
+/* ── Animation Frame Counter (Sprint 23) ─────────────── */
+static uint32_t s_anim_frame = 0;
+
 /* ── Patterned Tile Drawing ──────────────────────────── */
 /*
  * draw_tile_pattern — draws an 8x8 pixel-art tile pattern using
@@ -43,23 +46,28 @@ static void draw_tile_pattern(int sx, int sy, TileType tile, int tx, int ty) {
         }
         break;
 
-    case TILE_WATER:
-        /* Blue base with lighter wave lines */
+    case TILE_WATER: {
+        /* Blue base with animated wave lines (Sprint 23) */
+        /* s_anim_frame is updated externally for animation */
         base   = 0x7C00; /* blue */
         detail = 0x7E10; /* lighter blue */
         platform_draw_rect(sx, sy, 8, 8, base);
-        /* Horizontal wave lines with offset per row */
+        /* Horizontal wave lines with animated offset per row */
+        int anim = s_anim_frame / 8; /* slow wave cycle */
         for (j = 1; j < 8; j += 3) {
-            int wave_off = ((tx + ty + j) % 3);
+            int wave_off = ((tx + ty + j + anim) % 3);
             for (i = wave_off; i < 8; i += 3) {
                 platform_draw_rect(sx + i, sy + j, 2, 1, detail);
             }
         }
-        /* Sparkle dot */
-        if ((tx * 3 + ty * 5) % 7 == 0) {
-            platform_draw_rect(sx + ((tx + ty) % 6) + 1, sy + 2, 1, 1, 0x7FFF);
+        /* Animated sparkle dot */
+        if ((tx * 3 + ty * 5 + anim) % 7 == 0) {
+            int sparkle_x = ((tx + ty + anim) % 6) + 1;
+            int sparkle_y = 1 + ((anim + tx) % 5);
+            platform_draw_rect(sx + sparkle_x, sy + sparkle_y, 1, 1, 0x7FFF);
         }
         break;
+    }
 
     case TILE_SAND:
         /* Sandy yellow with brown speckles */
@@ -915,6 +923,85 @@ void map_draw(const MapData *map, int16_t cam_x, int16_t cam_y) {
             int screen_y = ty * TILE_SIZE - cam_y;
 
             draw_tile_pattern(screen_x, screen_y, tile, tx, ty);
+        }
+    }
+}
+
+/* ── Atmosphere Effects (Sprint 23) ───────────────────── */
+/*
+ * Called AFTER map_draw. Sets animation frame for next map_draw call AND
+ * draws atmospheric overlays (lava glow, snow particles).
+ */
+void map_draw_atmosphere(const MapData *map, int16_t cam_x, int16_t cam_y,
+                         uint32_t frame_count, uint8_t island_id) {
+    /* Update animation frame for animated tile drawing (used by next map_draw) */
+    s_anim_frame = frame_count;
+
+    /* Lava glow effect for Volcanic Coast (island 3) */
+    if (island_id == 3) {
+        /* Draw pulsing orange/red glow over water tiles (lava) */
+        int start_tx = cam_x / TILE_SIZE;
+        int start_ty = cam_y / TILE_SIZE;
+        int end_tx   = start_tx + (SCREEN_W / TILE_SIZE) + 2;
+        int end_ty   = start_ty + (SCREEN_H / TILE_SIZE) + 2;
+
+        if (start_tx < 0) start_tx = 0;
+        if (start_ty < 0) start_ty = 0;
+        if (end_tx > map->width)  end_tx = map->width;
+        if (end_ty > map->height) end_ty = map->height;
+
+        /* Pulse intensity: cycles over ~60 frames */
+        int pulse = (int)((frame_count % 60));
+        int glow_phase = (pulse < 30) ? pulse : (60 - pulse); /* 0..30..0 */
+
+        for (int ty = start_ty; ty < end_ty; ty++) {
+            for (int tx = start_tx; tx < end_tx; tx++) {
+                if ((TileType)map->tiles[ty][tx] == TILE_WATER) {
+                    int sx = tx * TILE_SIZE - cam_x;
+                    int sy = ty * TILE_SIZE - cam_y;
+
+                    /* Lava base: orange-red */
+                    platform_draw_rect(sx, sy, 8, 8, 0x015F); /* dark orange */
+
+                    /* Bright lava spots that pulse */
+                    int bright_x = ((tx * 5 + frame_count / 10) % 6) + 1;
+                    int bright_y = ((ty * 3 + frame_count / 12) % 5) + 1;
+                    if (glow_phase > 10) {
+                        platform_draw_rect(sx + bright_x, sy + bright_y, 2, 2, 0x02BF); /* yellow-orange */
+                    }
+                    if (glow_phase > 20) {
+                        int bx2 = ((tx * 7 + frame_count / 8) % 5) + 1;
+                        platform_draw_rect(sx + bx2, sy + 1, 1, 1, 0x03FF); /* bright yellow */
+                    }
+                    /* Dark crust lines */
+                    platform_draw_rect(sx, sy + ((tx + frame_count / 15) % 7), 8, 1, 0x000C);
+                }
+            }
+        }
+    }
+
+    /* Snow particle effect for Frozen Peaks (island 4) */
+    if (island_id == 4) {
+        /* Simple pseudo-random snowflakes using frame_count */
+        uint32_t seed = frame_count * 31337;
+        for (int i = 0; i < 20; i++) {
+            seed = seed * 1103515245u + 12345u;
+            int sx = (int)((seed >> 16) % SCREEN_W);
+            seed = seed * 1103515245u + 12345u;
+            int sy = (int)((seed >> 16) % SCREEN_H);
+
+            /* Snowflakes drift: offset by frame count */
+            sx = (sx + (int)(frame_count / 2 + i * 7)) % SCREEN_W;
+            sy = (sy + (int)(frame_count + i * 13)) % SCREEN_H;
+
+            /* Draw small white dot */
+            uint16_t snow_color = (i % 3 == 0) ? 0x7FFF : 0x6B5A; /* white or light gray */
+            platform_draw_rect(sx, sy, 1, 1, snow_color);
+            /* Some larger flakes */
+            if (i % 5 == 0) {
+                platform_draw_rect(sx + 1, sy, 1, 1, snow_color);
+                platform_draw_rect(sx, sy + 1, 1, 1, snow_color);
+            }
         }
     }
 }

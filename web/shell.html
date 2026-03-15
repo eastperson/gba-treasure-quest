@@ -358,6 +358,315 @@ setTimeout(function() {
 }, 15000);
 </script>
 
+<script>
+/* ═══════════════════════════════════════════════════════════
+ * Web Audio API — Synthesizer BGM + SFX
+ * Sprint 23: Sound and Atmosphere
+ * ═══════════════════════════════════════════════════════════ */
+var TQ_Audio = (function() {
+    var ctx = null;
+    var masterGain = null;
+    var bgmGain = null;
+    var sfxGain = null;
+    var currentBgm = -1;
+    var bgmNodes = [];
+    var initialized = false;
+
+    function init() {
+        if (initialized) return;
+        try {
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = ctx.createGain();
+            masterGain.gain.value = 0.4;
+            masterGain.connect(ctx.destination);
+
+            bgmGain = ctx.createGain();
+            bgmGain.gain.value = 0.3;
+            bgmGain.connect(masterGain);
+
+            sfxGain = ctx.createGain();
+            sfxGain.gain.value = 0.5;
+            sfxGain.connect(masterGain);
+
+            initialized = true;
+        } catch(e) {
+            console.warn('Web Audio not available:', e);
+        }
+    }
+
+    /* Resume audio context on user gesture (browser autoplay policy) */
+    function resume() {
+        if (ctx && ctx.state === 'suspended') {
+            ctx.resume();
+        }
+    }
+
+    /* ── Note frequency helper ──────────────────────────── */
+    var NOTE_FREQS = {
+        'C3':130.81,'D3':146.83,'E3':164.81,'F3':174.61,'G3':196.00,'A3':220.00,'B3':246.94,
+        'C4':261.63,'D4':293.66,'E4':329.63,'F4':349.23,'G4':392.00,'A4':440.00,'B4':493.88,
+        'C5':523.25,'D5':587.33,'E5':659.25,'F5':698.46,'G5':783.99,'A5':880.00,'B5':987.77,
+        'C6':1046.50,'D6':1174.66,'E6':1318.51,
+        'Db3':138.59,'Eb3':155.56,'Gb3':185.00,'Ab3':207.65,'Bb3':233.08,
+        'Db4':277.18,'Eb4':311.13,'Gb4':369.99,'Ab4':415.30,'Bb4':466.16,
+        'Db5':554.37,'Eb5':622.25,'Gb5':739.99,'Ab5':830.61,'Bb5':932.33
+    };
+
+    /* ── BGM Synthesizer ────────────────────────────────── */
+    /* Each BGM is a looping sequence of notes played with oscillators */
+
+    var bgmDefs = [
+        /* BGM_TITLE (0): Heroic, adventurous melody */
+        { tempo: 140, wave: 'square', notes: [
+            'E4',8,'G4',8,'A4',8,'B4',8,'C5',16,'B4',8,'A4',8,'G4',16,
+            'E4',8,'G4',8,'A4',8,'B4',8,'A4',16,'G4',8,'E4',8,'D4',16,
+            'C4',8,'E4',8,'G4',8,'A4',8,'G4',16,'E4',8,'C4',8,'D4',16,
+            'E4',8,'G4',8,'A4',8,'C5',8,'B4',16,'A4',8,'G4',8,'E4',16
+        ]},
+        /* BGM_TOWN (1): Calm, pleasant melody */
+        { tempo: 110, wave: 'triangle', notes: [
+            'C4',8,'E4',8,'G4',12,'E4',4,'F4',8,'A4',8,'G4',12,'E4',4,
+            'D4',8,'F4',8,'A4',12,'G4',4,'E4',8,'C4',8,'D4',12,'C4',4,
+            'C4',8,'E4',8,'G4',12,'A4',4,'G4',8,'E4',8,'F4',12,'E4',4,
+            'D4',8,'F4',8,'E4',12,'D4',4,'C4',8,'E4',8,'C4',12,'C4',4
+        ]},
+        /* BGM_FOREST (2): Mysterious, minor key */
+        { tempo: 100, wave: 'triangle', notes: [
+            'A3',8,'C4',8,'E4',12,'C4',4,'D4',8,'F4',8,'E4',12,'C4',4,
+            'A3',8,'B3',8,'C4',12,'E4',4,'D4',8,'C4',8,'B3',12,'A3',4,
+            'E4',8,'D4',8,'C4',12,'B3',4,'A3',8,'C4',8,'E4',12,'A3',4,
+            'B3',8,'D4',8,'C4',12,'A3',4,'G3',8,'A3',8,'B3',12,'A3',4
+        ]},
+        /* BGM_BATTLE (3): Fast, energetic */
+        { tempo: 170, wave: 'square', notes: [
+            'A4',4,'A4',4,'C5',4,'A4',4,'E4',4,'E4',4,'A4',8,
+            'G4',4,'G4',4,'B4',4,'G4',4,'D4',4,'D4',4,'G4',8,
+            'A4',4,'C5',4,'E5',4,'C5',4,'A4',4,'E4',4,'A4',8,
+            'G4',4,'A4',4,'B4',4,'C5',4,'B4',4,'A4',4,'G4',8
+        ]},
+        /* BGM_BOSS (4): Intense, dramatic */
+        { tempo: 160, wave: 'sawtooth', notes: [
+            'E3',4,'E3',4,'E4',4,'E3',4,'Eb3',4,'Eb3',4,'Eb4',4,'Eb3',4,
+            'D3',4,'D3',4,'D4',4,'D3',4,'Db3',4,'Db3',4,'Db4',8,
+            'C3',4,'C3',4,'C4',4,'E3',4,'G3',4,'B3',4,'C4',8,
+            'Bb3',4,'A3',4,'Ab3',4,'G3',4,'Gb3',4,'G3',4,'Ab3',4,'A3',4
+        ]},
+        /* BGM_VICTORY (5): Triumphant fanfare (no loop) */
+        { tempo: 150, wave: 'square', loop: false, notes: [
+            'C5',4,'C5',4,'C5',4,'C5',12,
+            'Ab4',12,'Bb4',12,'C5',8,'Bb4',4,'C5',16,
+            'E5',4,'E5',4,'E5',4,'E5',12,
+            'C5',12,'D5',12,'E5',8,'D5',4,'E5',16
+        ]},
+        /* BGM_GAMEOVER (6): Slow, somber */
+        { tempo: 70, wave: 'sine', loop: false, notes: [
+            'E4',12,'Eb4',12,'D4',12,'Db4',12,
+            'C4',16,'B3',16,'Bb3',16,'A3',24
+        ]}
+    ];
+
+    function stopBgm() {
+        bgmNodes.forEach(function(n) {
+            try { n.stop(); } catch(e) {}
+        });
+        bgmNodes = [];
+        currentBgm = -1;
+    }
+
+    function playBgm(id) {
+        if (!initialized) init();
+        if (!ctx) return;
+        resume();
+        if (id === currentBgm) return;
+        stopBgm();
+        if (id < 0 || id >= bgmDefs.length) return;
+        currentBgm = id;
+
+        var def = bgmDefs[id];
+        var notes = def.notes;
+        var bps = def.tempo / 60.0;
+        var beatLen = 1.0 / bps;
+
+        function scheduleSequence(startTime) {
+            var t = startTime;
+            var totalDuration = 0;
+            for (var i = 0; i < notes.length; i += 2) {
+                var note = notes[i];
+                var dur = notes[i+1] * beatLen * 0.25;
+                var freq = NOTE_FREQS[note];
+                if (!freq) { t += dur; totalDuration += dur; continue; }
+
+                var osc = ctx.createOscillator();
+                var env = ctx.createGain();
+                osc.type = def.wave;
+                osc.frequency.value = freq;
+                env.gain.setValueAtTime(0, t);
+                env.gain.linearRampToValueAtTime(0.3, t + 0.02);
+                env.gain.setValueAtTime(0.25, t + dur * 0.6);
+                env.gain.linearRampToValueAtTime(0, t + dur * 0.95);
+                osc.connect(env);
+                env.connect(bgmGain);
+                osc.start(t);
+                osc.stop(t + dur);
+                bgmNodes.push(osc);
+                t += dur;
+                totalDuration += dur;
+            }
+            return totalDuration;
+        }
+
+        var seqLen = scheduleSequence(ctx.currentTime);
+
+        /* Loop by re-scheduling */
+        if (def.loop !== false) {
+            var loopInterval = setInterval(function() {
+                if (currentBgm !== id) { clearInterval(loopInterval); return; }
+                scheduleSequence(ctx.currentTime + 0.05);
+            }, seqLen * 1000 - 200);
+            bgmNodes._loopInterval = loopInterval;
+        }
+    }
+
+    /* ── SFX Synthesizer ────────────────────────────────── */
+    function playSfx(id) {
+        if (!initialized) init();
+        if (!ctx) return;
+        resume();
+
+        var t = ctx.currentTime;
+        var osc, env, osc2, env2;
+
+        switch (id) {
+        case 0: /* SFX_CURSOR — short high blip */
+            osc = ctx.createOscillator();
+            env = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(800, t);
+            osc.frequency.linearRampToValueAtTime(1200, t + 0.04);
+            env.gain.setValueAtTime(0.2, t);
+            env.gain.linearRampToValueAtTime(0, t + 0.06);
+            osc.connect(env); env.connect(sfxGain);
+            osc.start(t); osc.stop(t + 0.06);
+            break;
+
+        case 1: /* SFX_CONFIRM — two-tone ascending */
+            osc = ctx.createOscillator();
+            env = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(523, t);
+            osc.frequency.setValueAtTime(784, t + 0.06);
+            env.gain.setValueAtTime(0.25, t);
+            env.gain.linearRampToValueAtTime(0, t + 0.12);
+            osc.connect(env); env.connect(sfxGain);
+            osc.start(t); osc.stop(t + 0.12);
+            break;
+
+        case 2: /* SFX_CANCEL — descending tone */
+            osc = ctx.createOscillator();
+            env = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(600, t);
+            osc.frequency.linearRampToValueAtTime(200, t + 0.1);
+            env.gain.setValueAtTime(0.25, t);
+            env.gain.linearRampToValueAtTime(0, t + 0.12);
+            osc.connect(env); env.connect(sfxGain);
+            osc.start(t); osc.stop(t + 0.12);
+            break;
+
+        case 3: /* SFX_HIT — noise burst + low thud */
+            osc = ctx.createOscillator();
+            env = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, t);
+            osc.frequency.linearRampToValueAtTime(60, t + 0.08);
+            env.gain.setValueAtTime(0.4, t);
+            env.gain.linearRampToValueAtTime(0, t + 0.1);
+            osc.connect(env); env.connect(sfxGain);
+            osc.start(t); osc.stop(t + 0.1);
+            /* White noise layer */
+            osc2 = ctx.createOscillator();
+            env2 = ctx.createGain();
+            osc2.type = 'square';
+            osc2.frequency.setValueAtTime(80, t);
+            env2.gain.setValueAtTime(0.15, t);
+            env2.gain.linearRampToValueAtTime(0, t + 0.06);
+            osc2.connect(env2); env2.connect(sfxGain);
+            osc2.start(t); osc2.stop(t + 0.06);
+            break;
+
+        case 4: /* SFX_HEAL — gentle ascending arpeggio */
+            for (var hi = 0; hi < 3; hi++) {
+                osc = ctx.createOscillator();
+                env = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = [523, 659, 784][hi];
+                env.gain.setValueAtTime(0, t + hi * 0.08);
+                env.gain.linearRampToValueAtTime(0.2, t + hi * 0.08 + 0.02);
+                env.gain.linearRampToValueAtTime(0, t + hi * 0.08 + 0.15);
+                osc.connect(env); env.connect(sfxGain);
+                osc.start(t + hi * 0.08); osc.stop(t + hi * 0.08 + 0.15);
+            }
+            break;
+
+        case 5: /* SFX_LEVELUP — triumphant fanfare */
+            var luNotes = [523, 659, 784, 1047];
+            for (var li = 0; li < 4; li++) {
+                osc = ctx.createOscillator();
+                env = ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.value = luNotes[li];
+                env.gain.setValueAtTime(0, t + li * 0.1);
+                env.gain.linearRampToValueAtTime(0.25, t + li * 0.1 + 0.02);
+                env.gain.setValueAtTime(0.2, t + li * 0.1 + 0.08);
+                env.gain.linearRampToValueAtTime(0, t + li * 0.1 + (li === 3 ? 0.3 : 0.1));
+                osc.connect(env); env.connect(sfxGain);
+                osc.start(t + li * 0.1); osc.stop(t + li * 0.1 + (li === 3 ? 0.3 : 0.1));
+            }
+            break;
+
+        case 6: /* SFX_CHEST — sparkle sound */
+            osc = ctx.createOscillator();
+            env = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1200, t);
+            osc.frequency.linearRampToValueAtTime(2400, t + 0.15);
+            osc.frequency.linearRampToValueAtTime(1800, t + 0.3);
+            env.gain.setValueAtTime(0.3, t);
+            env.gain.linearRampToValueAtTime(0.15, t + 0.2);
+            env.gain.linearRampToValueAtTime(0, t + 0.35);
+            osc.connect(env); env.connect(sfxGain);
+            osc.start(t); osc.stop(t + 0.35);
+            break;
+
+        case 7: /* SFX_DOOR — low creak */
+            osc = ctx.createOscillator();
+            env = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(200, t);
+            osc.frequency.linearRampToValueAtTime(120, t + 0.15);
+            osc.frequency.linearRampToValueAtTime(180, t + 0.2);
+            env.gain.setValueAtTime(0.3, t);
+            env.gain.linearRampToValueAtTime(0, t + 0.25);
+            osc.connect(env); env.connect(sfxGain);
+            osc.start(t); osc.stop(t + 0.25);
+            break;
+        }
+    }
+
+    return {
+        init: init,
+        resume: resume,
+        playBgm: playBgm,
+        stopBgm: stopBgm,
+        playSfx: playSfx
+    };
+})();
+
+/* Auto-init audio on first user gesture */
+document.addEventListener('click', function() { TQ_Audio.init(); TQ_Audio.resume(); }, { once: false });
+document.addEventListener('touchstart', function() { TQ_Audio.init(); TQ_Audio.resume(); }, { once: false });
+</script>
+
 {{{ SCRIPT }}}
 
 </body>

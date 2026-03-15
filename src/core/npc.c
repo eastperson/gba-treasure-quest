@@ -4,6 +4,7 @@
  */
 #include "npc.h"
 #include "platform.h"
+#include "tiledata.h"
 #include <string.h>
 
 /* ── NPC Storage ───────────────────────────────────────── */
@@ -138,8 +139,19 @@ void npc_draw(int16_t cam_x, int16_t cam_y) {
             continue;
         }
 
-        /* Draw NPC using proper sprite */
-        platform_draw_sprite(screen_x, screen_y, 8, 0, false);
+        /* Draw NPC using type-specific sprite (Sprint 23) */
+        {
+            int sid;
+            switch (npc->type) {
+                case NPC_VILLAGER:        sid = SPRITE_ID_NPC_VILLAGER;   break;
+                case NPC_SHOPKEEPER:      sid = SPRITE_ID_NPC_SHOPKEEPER; break;
+                case NPC_GUARD:           sid = SPRITE_ID_NPC_GUARD;      break;
+                case NPC_SAGE:            sid = SPRITE_ID_NPC_SAGE;       break;
+                case NPC_ENEMY_OVERWORLD: sid = SPRITE_ID_NPC_ENEMY_OW;   break;
+                default:                  sid = 8; break; /* fallback to generic */
+            }
+            platform_draw_sprite(screen_x, screen_y, sid, 0, false);
+        }
     }
 }
 

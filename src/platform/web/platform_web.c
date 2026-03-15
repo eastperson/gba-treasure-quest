@@ -20,17 +20,34 @@
 #include <emscripten.h>
 #endif
 
-/* ── Audio (stubs — web audio can be added later) ────── */
+/* ── Audio (Web Audio API via JavaScript) ────────────── */
 
 void platform_play_bgm(int track_id) {
+#ifdef __EMSCRIPTEN__
+    EM_ASM({
+        if (typeof TQ_Audio !== 'undefined') TQ_Audio.playBgm($0);
+    }, track_id);
+#else
     (void)track_id;
+#endif
 }
 
 void platform_stop_bgm(void) {
+#ifdef __EMSCRIPTEN__
+    EM_ASM({
+        if (typeof TQ_Audio !== 'undefined') TQ_Audio.stopBgm();
+    });
+#endif
 }
 
 void platform_play_sfx(int sfx_id) {
+#ifdef __EMSCRIPTEN__
+    EM_ASM({
+        if (typeof TQ_Audio !== 'undefined') TQ_Audio.playSfx($0);
+    }, sfx_id);
+#else
     (void)sfx_id;
+#endif
 }
 
 /* ── Save/Load via localStorage ──────────────────────── */

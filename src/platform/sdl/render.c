@@ -309,6 +309,32 @@ void platform_draw_sprite(int x, int y, int sprite_id,
                           NPC16_ROW_COLORS, 1, flip_h);
         return;
     }
+    /* NPC type-specific 16x16 sprites (Sprint 23) */
+    if (sprite_id == SPRITE_ID_NPC_VILLAGER) {
+        draw_sprite_16x16(x - 4, y - 8, SPRITE16_NPC_VILLAGER,
+                          NPC16_VILLAGER_COLORS, 1, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_SHOPKEEPER) {
+        draw_sprite_16x16(x - 4, y - 8, SPRITE16_NPC_SHOPKEEPER,
+                          NPC16_SHOPKEEPER_COLORS, 1, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_GUARD) {
+        draw_sprite_16x16(x - 4, y - 8, SPRITE16_NPC_GUARD,
+                          NPC16_GUARD_COLORS, 1, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_SAGE) {
+        draw_sprite_16x16(x - 4, y - 8, SPRITE16_NPC_SAGE,
+                          NPC16_SAGE_COLORS, 1, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_ENEMY_OW) {
+        draw_sprite_16x16(x - 4, y - 8, SPRITE16_NPC_ENEMY,
+                          NPC16_ENEMY_COLORS, 1, flip_h);
+        return;
+    }
     if (sprite_id >= 10 && sprite_id < 10 + COLOR_ENEMY_COLORS_COUNT) {
         int idx = sprite_id - 10;
         draw_sprite_16x16(x - 4, y - 8,
@@ -351,6 +377,32 @@ void platform_draw_sprite_scaled(int x, int y, int sprite_id,
     if (sprite_id == 8) {
         draw_sprite_16x16(x, y, SPRITE16_NPC,
                           NPC16_ROW_COLORS, scale, flip_h);
+        return;
+    }
+    /* NPC type-specific 16x16 sprites scaled (Sprint 23) */
+    if (sprite_id == SPRITE_ID_NPC_VILLAGER) {
+        draw_sprite_16x16(x, y, SPRITE16_NPC_VILLAGER,
+                          NPC16_VILLAGER_COLORS, scale, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_SHOPKEEPER) {
+        draw_sprite_16x16(x, y, SPRITE16_NPC_SHOPKEEPER,
+                          NPC16_SHOPKEEPER_COLORS, scale, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_GUARD) {
+        draw_sprite_16x16(x, y, SPRITE16_NPC_GUARD,
+                          NPC16_GUARD_COLORS, scale, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_SAGE) {
+        draw_sprite_16x16(x, y, SPRITE16_NPC_SAGE,
+                          NPC16_SAGE_COLORS, scale, flip_h);
+        return;
+    }
+    if (sprite_id == SPRITE_ID_NPC_ENEMY_OW) {
+        draw_sprite_16x16(x, y, SPRITE16_NPC_ENEMY,
+                          NPC16_ENEMY_COLORS, scale, flip_h);
         return;
     }
     if (sprite_id >= 10 && sprite_id < 10 + COLOR_ENEMY_COLORS_COUNT) {

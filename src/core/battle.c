@@ -344,7 +344,22 @@ void battle_update(BattleContext *bc, Character *hero) {
                     bc->enemy.hp -= (int16_t)dmg;
                     bc->damage_display = (int16_t)dmg;
                     fx_spawn(FX_DAMAGE_NUM, 116, 10, dmg, 30);
-                    fx_spawn(FX_HIT_FLASH, 0, 0, 0, 6);
+                    /* Spell-specific visual effects (Sprint 23) */
+                    switch (bc->spell_cursor) {
+                        case 0: /* Fire */
+                            fx_spawn(FX_FIREBALL, 120, 30, 0, 20);
+                            break;
+                        case 1: /* Ice */
+                            fx_spawn(FX_ICE_SHARDS, 120, 30, 0, 18);
+                            break;
+                        case 2: /* Thunder */
+                            fx_spawn(FX_LIGHTNING, 120, 0, 0, 16);
+                            break;
+                        default:
+                            fx_spawn(FX_HIT_FLASH, 0, 0, 0, 6);
+                            break;
+                    }
+                    fx_spawn(FX_ENEMY_SHAKE, 0, 0, 0, 10);
                     snprintf(bc->message, sizeof(bc->message),
                              "%s deals %d damage!", sp->name, dmg);
                     bc->state = BATTLE_EXECUTE;
@@ -450,9 +465,10 @@ void battle_update(BattleContext *bc, Character *hero) {
             bc->enemy.hp -= (int16_t)dmg;
             bc->damage_display = (int16_t)dmg;
 
-            /* Spawn visual effects: damage number at enemy + hit flash */
+            /* Spawn visual effects: damage number at enemy + hit flash + shake */
             fx_spawn(FX_DAMAGE_NUM, 116, 10, dmg, 30);
             fx_spawn(FX_HIT_FLASH, 0, 0, 0, 6);
+            fx_spawn(FX_ENEMY_SHAKE, 0, 0, 0, 10); /* Sprint 23: shake effect */
 
             if (bc->enemy.hp <= 0) {
                 bc->enemy.hp = 0;
@@ -622,6 +638,8 @@ void battle_update(BattleContext *bc, Character *hero) {
                      bc->enemy.name,
                      bc->enemy.exp_reward,
                      bc->enemy.gold_reward);
+            /* Sprint 23: Victory fanfare animation */
+            fx_spawn(FX_VICTORY, 0, 0, 0, 80);
         }
         bc->turn_timer++;
         if (bc->turn_timer >= 90) {
@@ -686,8 +704,11 @@ void battle_render(BattleContext *bc, Character *hero) {
     {
         int ex = (240 - 32) / 2;  /* center 32px wide (16*2) */
         int ey = 6;
+        /* Sprint 23: Apply shake offset */
+        int shake = fx_get_shake_offset();
+        ex += shake;
         /* Shadow under enemy */
-        platform_draw_rect(ex + 4, ey + 34, 24, 4, 0x0842);
+        platform_draw_rect(ex + 4 - shake, ey + 34, 24, 4, 0x0842);
         /* Draw enemy at 2x scale */
         platform_draw_sprite_scaled(ex, ey, bc->enemy.sprite_id, 0, false, 2);
     }

@@ -14,6 +14,12 @@ typedef enum {
     FX_HEAL,
     FX_LEVEL_UP,
     FX_FADE,
+    /* Sprint 23: Battle visual enhancements */
+    FX_FIREBALL,
+    FX_ICE_SHARDS,
+    FX_LIGHTNING,
+    FX_ENEMY_SHAKE,
+    FX_VICTORY,
 } EffectType;
 
 /* ── Effect Instance ──────────────────────────────────── */
@@ -34,5 +40,6 @@ void fx_init(void);
 void fx_spawn(EffectType type, int x, int y, int value, int duration);
 void fx_update(void);
 void fx_render(void);
+int  fx_get_shake_offset(void); /* Sprint 23: returns shake X offset or 0 */
 
 #endif /* EFFECTS_H */

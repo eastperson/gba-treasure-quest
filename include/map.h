@@ -75,6 +75,8 @@ bool     map_load(MapData *map, uint8_t map_id);
 TileType map_get_tile(const MapData *map, int16_t x, int16_t y);
 bool     map_is_walkable(const MapData *map, int16_t x, int16_t y);
 void          map_draw(const MapData *map, int16_t cam_x, int16_t cam_y);
+void          map_draw_atmosphere(const MapData *map, int16_t cam_x, int16_t cam_y,
+                                  uint32_t frame_count, uint8_t island_id);
 EventTrigger *map_check_trigger(MapData *map, int16_t x, int16_t y);
 
 #endif /* MAP_H */

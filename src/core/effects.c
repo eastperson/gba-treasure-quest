@@ -44,6 +44,20 @@ void fx_update(void) {
     }
 }
 
+/* ── Shake Offset Query (Sprint 23) ──────────────────── */
+int fx_get_shake_offset(void) {
+    for (int i = 0; i < MAX_EFFECTS; i++) {
+        if (s_effects[i].active && s_effects[i].type == FX_ENEMY_SHAKE) {
+            /* Oscillate: -3, +3, -2, +2, -1, +1, 0... */
+            int t = s_effects[i].timer;
+            int amp = 3 - t / 2;
+            if (amp < 0) amp = 0;
+            return (t % 2 == 0) ? amp : -amp;
+        }
+    }
+    return 0;
+}
+
 /* ── Render ───────────────────────────────────────────── */
 void fx_render(void) {
     for (int i = 0; i < MAX_EFFECTS; i++) {
@@ -120,6 +134,121 @@ void fx_render(void) {
             int progress = (fx->timer * SCREEN_H) / fx->duration;
             if (progress > SCREEN_H) progress = SCREEN_H;
             platform_draw_rect(0, 0, SCREEN_W, progress, 0x0000);
+            break;
+        }
+
+        /* ── Sprint 23: Fireball — expanding orange/red circle ── */
+        case FX_FIREBALL: {
+            int radius = 2 + fx->timer / 2;
+            if (radius > 12) radius = 12;
+            int cx = fx->x;
+            int cy = fx->y;
+            /* Draw concentric circles: outer orange, inner yellow */
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    int dist2 = dx*dx + dy*dy;
+                    if (dist2 <= radius * radius) {
+                        uint16_t c;
+                        if (dist2 < (radius/2) * (radius/2))
+                            c = 0x03FF; /* bright yellow center */
+                        else if (dist2 < (radius*3/4) * (radius*3/4))
+                            c = 0x02BF; /* orange mid */
+                        else
+                            c = 0x001F; /* red outer */
+                        int px = cx + dx;
+                        int py = cy + dy;
+                        if (px >= 0 && px < SCREEN_W && py >= 0 && py < SCREEN_H)
+                            platform_draw_rect(px, py, 1, 1, c);
+                    }
+                }
+            }
+            /* Trailing sparks */
+            if (fx->timer < 10) {
+                for (int s = 0; s < 3; s++) {
+                    int sx = cx - 5 + (int)((fx->timer * 3 + s * 7) % 10);
+                    int sy = cy + 3 + s * 2;
+                    platform_draw_rect(sx, sy, 1, 1, 0x03FF);
+                }
+            }
+            break;
+        }
+
+        /* ── Sprint 23: Ice Shards — blue crystal fragments ── */
+        case FX_ICE_SHARDS: {
+            int num_shards = 5;
+            for (int s = 0; s < num_shards; s++) {
+                /* Each shard expands outward from center */
+                int angle_phase = (s * 72 + fx->timer * 8) % 360;
+                int dist = 2 + fx->timer;
+                if (dist > 14) dist = 14;
+                /* Approximate sine/cosine with simple lookup */
+                int dx_table[5] = { 0, 3, 2, -2, -3 };
+                int dy_table[5] = { -3, -1, 2, 2, -1 };
+                int sx = fx->x + dx_table[s] * dist / 3;
+                int sy = fx->y + dy_table[s] * dist / 3;
+                /* Draw diamond-shaped shard */
+                uint16_t ice_color = ((s + fx->timer) % 2 == 0) ? 0x7E10 : 0x7C00;
+                platform_draw_rect(sx, sy - 1, 1, 3, ice_color);
+                platform_draw_rect(sx - 1, sy, 3, 1, ice_color);
+                /* Center bright pixel */
+                platform_draw_rect(sx, sy, 1, 1, 0x7FFF);
+                (void)angle_phase;
+            }
+            break;
+        }
+
+        /* ── Sprint 23: Lightning — vertical zigzag bolts ── */
+        case FX_LIGHTNING: {
+            if (fx->timer < fx->duration / 2) {
+                /* Flash background white briefly */
+                if (fx->timer < 3) {
+                    platform_draw_rect(0, 0, SCREEN_W, SCREEN_H, 0x7FFF);
+                }
+                /* Draw zigzag bolt */
+                int bx = fx->x;
+                int by = 0;
+                uint16_t bolt_color = 0x03FF; /* bright yellow */
+                for (int seg = 0; seg < 8; seg++) {
+                    int nx = bx + ((seg % 2 == 0) ? 4 : -4);
+                    int ny = by + 9;
+                    /* Draw thick line segment */
+                    int dx = (nx > bx) ? 1 : -1;
+                    int steps = (nx > bx) ? (nx - bx) : (bx - nx);
+                    for (int step = 0; step <= steps; step++) {
+                        int px = bx + step * dx;
+                        int py = by + (ny - by) * step / (steps > 0 ? steps : 1);
+                        platform_draw_rect(px, py, 2, 2, bolt_color);
+                    }
+                    bx = nx;
+                    by = ny;
+                }
+            }
+            break;
+        }
+
+        /* ── Sprint 23: Enemy Shake — screen offset effect ── */
+        case FX_ENEMY_SHAKE: {
+            /* This effect is checked during battle render for offset.
+             * Here we draw a subtle red flash on the enemy area. */
+            if (fx->timer < 6 && (fx->timer % 2 == 0)) {
+                /* Red tint flash over enemy area */
+                platform_draw_rect(80, 2, 80, 70, 0x001F);
+            }
+            break;
+        }
+
+        /* ── Sprint 23: Victory — sparkles and stars rising ── */
+        case FX_VICTORY: {
+            /* Rising golden sparkles across screen */
+            for (int s = 0; s < 8; s++) {
+                int sx = 20 + s * 28 + ((fx->timer + s * 3) % 12);
+                int sy = SCREEN_H - (fx->timer * 2 + s * 8) % (SCREEN_H + 20);
+                if (sy < 0 || sy >= SCREEN_H) continue;
+                /* Star shape: + pattern */
+                uint16_t star_c = ((s + fx->timer / 3) % 2 == 0) ? 0x03FF : 0x7FFF;
+                platform_draw_rect(sx, sy - 1, 1, 3, star_c);
+                platform_draw_rect(sx - 1, sy, 3, 1, star_c);
+            }
             break;
         }
 
