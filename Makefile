@@ -119,6 +119,7 @@ test:
 	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_battle.c -o build/test/test_battle && ./build/test/test_battle
 	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_save.c -o build/test/test_save && ./build/test/test_save
 	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_party.c -o build/test/test_party && ./build/test/test_party
+	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_quest.c -o build/test/test_quest && ./build/test/test_quest
 	@echo "=== All tests complete ==="
 
 # ============================================================

@@ -18,6 +18,7 @@
 #include "audio.h"
 #include "transition.h"
 #include "treasure.h"
+#include "quest.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -424,10 +425,53 @@ void state_world_update(GameContext *ctx) {
     if (pressed & KEY_A) {
         NPCData *npc = npc_check_interaction(ctx->pos.x, ctx->pos.y, ctx->pos.direction);
         if (npc) {
-            if (npc->type == NPC_SHOPKEEPER) {
-                ctx->shop_cursor = 0;
-                ctx->state = STATE_SHOP;
-            } else {
+            /* Check if this NPC has a quest-related dialogue override */
+            int qd = quest_get_npc_dialogue(ctx->quest_flags, npc->dialogue_id,
+                                            ctx->pos.map_id);
+
+            if (qd == -1) {
+                /* No quest override -- use default behavior */
+                if (npc->type == NPC_SHOPKEEPER) {
+                    ctx->shop_cursor = 0;
+                    ctx->state = STATE_SHOP;
+                } else {
+                    dialogue_start_with_flags(npc->dialogue_id, ctx->quest_flags);
+                    ctx->state = STATE_DIALOGUE;
+                }
+            } else if (qd <= -500) {
+                /* Delivery target: mark delivery done + show confirm */
+                int qi = -(qd + 500);
+                ctx->quest_flags[QUEST_DELIVER_FLAGS_IDX] |= (1 << qi);
+                /* Auto-complete: check and set state */
+                if (quest_check_completion(ctx->quest_flags, qi, &ctx->inventory)) {
+                    quest_set_state(ctx->quest_flags, qi, QUEST_COMPLETE);
+                }
+                dialogue_start_with_flags(npc->dialogue_id, ctx->quest_flags);
+                ctx->state = STATE_DIALOGUE;
+            } else if (qd <= -400) {
+                /* Quest rewarded -- thank-you NPC, use default dialogue */
+                dialogue_start_with_flags(npc->dialogue_id, ctx->quest_flags);
+                ctx->state = STATE_DIALOGUE;
+            } else if (qd <= -300) {
+                /* Quest complete -- give reward on interaction */
+                int qi = -(qd + 300);
+                quest_give_reward(ctx->quest_flags, qi, &ctx->inventory, &ctx->party);
+                /* Show default dialogue (as thank-you) */
+                dialogue_start_with_flags(npc->dialogue_id, ctx->quest_flags);
+                ctx->state = STATE_DIALOGUE;
+            } else if (qd <= -200) {
+                /* Quest active reminder -- check if now complete */
+                int qi = -(qd + 200);
+                if (quest_check_completion(ctx->quest_flags, qi, &ctx->inventory)) {
+                    quest_set_state(ctx->quest_flags, qi, QUEST_COMPLETE);
+                    quest_give_reward(ctx->quest_flags, qi, &ctx->inventory, &ctx->party);
+                }
+                dialogue_start_with_flags(npc->dialogue_id, ctx->quest_flags);
+                ctx->state = STATE_DIALOGUE;
+            } else if (qd <= -100) {
+                /* Quest offer -- accept quest */
+                int qi = -(qd + 100);
+                quest_set_state(ctx->quest_flags, qi, QUEST_ACTIVE);
                 dialogue_start_with_flags(npc->dialogue_id, ctx->quest_flags);
                 ctx->state = STATE_DIALOGUE;
             }
@@ -663,6 +707,9 @@ void state_battle_update(GameContext *ctx) {
         } else {
             /* Apply rewards if enemy was defeated */
             if (g_battle.enemy.hp <= 0) {
+                /* Track enemy kill for quest system */
+                quest_on_enemy_defeated(ctx->quest_flags, g_battle.enemy.name);
+
                 hero->exp += g_battle.enemy.exp_reward;
                 ctx->party.gold += g_battle.enemy.gold_reward;
 
