@@ -81,6 +81,7 @@ WEB_CFLAGS := -O2 -Wall $(INCLUDES) -DPLATFORM_SDL -DPLATFORM_WEB \
               -sUSE_SDL=2
 
 WEB_LDFLAGS := -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 \
+               -sEXPORTED_FUNCTIONS='["_main","_web_key_down","_web_key_up"]' \
                -sEXPORTED_RUNTIME_METHODS='["UTF8ToString","lengthBytesUTF8","stringToUTF8"]' \
                --shell-file web/shell.html \
                -sINITIAL_MEMORY=33554432

@@ -250,40 +250,51 @@ document.addEventListener('click', function() {
     if (c) c.focus();
 });
 
-// Touch → Keyboard event injection
+// Touch → Direct C function calls (Emscripten's SDL keyboard hooks
+// don't see programmatically dispatched KeyboardEvents)
 (function() {
-    const buttons = document.querySelectorAll('[data-key]');
-    const activeKeys = new Set();
+    // Key masks matching platform.h KEY_* enum values
+    var KEY_MAP = {
+        'KeyZ':      0x0001, // KEY_A
+        'KeyX':      0x0002, // KEY_B
+        'Backspace': 0x0004, // KEY_SELECT
+        'Enter':     0x0008, // KEY_START
+        'ArrowRight':0x0010, // KEY_RIGHT
+        'ArrowLeft': 0x0020, // KEY_LEFT
+        'ArrowUp':   0x0040, // KEY_UP
+        'ArrowDown': 0x0080, // KEY_DOWN
+        'KeyE':      0x0100, // KEY_R
+        'KeyQ':      0x0200  // KEY_L
+    };
 
-    function sendKey(code, type) {
-        const ev = new KeyboardEvent(type, {
-            code: code,
-            key: code,
-            bubbles: true,
-            cancelable: true
-        });
-        document.dispatchEvent(ev);
-    }
+    var buttons = document.querySelectorAll('[data-key]');
+    var activeKeys = new Set();
 
     function handleStart(e) {
         e.preventDefault();
-        const key = e.currentTarget.dataset.key;
+        var key = e.currentTarget.dataset.key;
         if (!activeKeys.has(key)) {
             activeKeys.add(key);
             e.currentTarget.classList.add('pressed');
-            sendKey(key, 'keydown');
+            var mask = KEY_MAP[key];
+            if (mask && Module._web_key_down) {
+                Module._web_key_down(mask);
+            }
         }
     }
 
     function handleEnd(e) {
         e.preventDefault();
-        const key = e.currentTarget.dataset.key;
+        var key = e.currentTarget.dataset.key;
         activeKeys.delete(key);
         e.currentTarget.classList.remove('pressed');
-        sendKey(key, 'keyup');
+        var mask = KEY_MAP[key];
+        if (mask && Module._web_key_up) {
+            Module._web_key_up(mask);
+        }
     }
 
-    buttons.forEach(btn => {
+    buttons.forEach(function(btn) {
         btn.addEventListener('touchstart', handleStart, { passive: false });
         btn.addEventListener('touchend', handleEnd, { passive: false });
         btn.addEventListener('touchcancel', handleEnd, { passive: false });

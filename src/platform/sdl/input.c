@@ -7,8 +7,28 @@
 
 #include <SDL2/SDL.h>
 
+#ifdef PLATFORM_WEB
+#include <emscripten.h>
+#endif
+
 /* Global quit flag — set by SDL_QUIT or other exit triggers */
 bool g_quit_requested = false;
+
+#ifdef PLATFORM_WEB
+/* Touch input from JavaScript — Emscripten's keyboard hooks don't see
+ * programmatically dispatched KeyboardEvents, so JS calls these directly. */
+static uint16_t g_touch_keys = 0;
+
+EMSCRIPTEN_KEEPALIVE
+void web_key_down(int key_mask) {
+    g_touch_keys |= (uint16_t)key_mask;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void web_key_up(int key_mask) {
+    g_touch_keys &= ~(uint16_t)key_mask;
+}
+#endif
 
 /* Fullscreen toggle flag — set by F11 key */
 bool g_fullscreen_toggle = false;
@@ -53,6 +73,11 @@ void platform_poll_input(void) {
         g_keys_current |= KEY_R;
     if (kb[SDL_SCANCODE_Q])
         g_keys_current |= KEY_L;
+
+#ifdef PLATFORM_WEB
+    /* Merge touch input from JavaScript */
+    g_keys_current |= g_touch_keys;
+#endif
 
     /* Gamepad support */
     SDL_GameController *pad = NULL;
