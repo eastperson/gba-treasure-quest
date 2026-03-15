@@ -19,8 +19,18 @@ extern bool g_quit_requested;
 
 /* Global game context for the main loop callback */
 static GameContext g_ctx;
+static bool g_initialized = false;
 
 static void main_loop_iteration(void) {
+    /* Deferred init: SDL_CreateRenderer calls emscripten_set_main_loop_timing
+     * internally, so emscripten_set_main_loop must already exist first. */
+    if (!g_initialized) {
+        platform_init();
+        game_init(&g_ctx);
+        g_initialized = true;
+        return;
+    }
+
     if (g_quit_requested || !g_ctx.running) {
 #ifdef __EMSCRIPTEN__
         emscripten_cancel_main_loop();
@@ -36,17 +46,17 @@ static void main_loop_iteration(void) {
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
-    platform_init();
-    game_init(&g_ctx);
-
 #ifdef __EMSCRIPTEN__
-    /* Let the browser drive the frame rate (requestAnimationFrame).
-     * 0 = use browser's refresh rate, 1 = simulate infinite loop */
+    /* Establish main loop FIRST — SDL_CreateRenderer needs it to exist
+     * before it can call emscripten_set_main_loop_timing internally.
+     * Actual init happens on first iteration via deferred init above. */
     emscripten_set_main_loop(main_loop_iteration, 0, 1);
 #else
-    /* Fallback for non-emscripten builds (shouldn't happen) */
+    platform_init();
+    game_init(&g_ctx);
     while (g_ctx.running && !g_quit_requested) {
-        main_loop_iteration();
+        game_update(&g_ctx);
+        game_render(&g_ctx);
     }
     platform_shutdown();
 #endif
