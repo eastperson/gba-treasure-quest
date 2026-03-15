@@ -208,6 +208,7 @@ canvas#canvas {
 </div>
 
 <div id="game-header">Treasure Quest: Seven Islands</div>
+<pre id="error-display" style="display:none;color:#f55;background:#111;padding:8px;font-size:11px;max-width:480px;overflow:auto;max-height:100px;margin:4px auto;border-radius:4px;"></pre>
 
 <div id="canvas-container">
     <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
@@ -299,11 +300,18 @@ document.addEventListener('click', function() {
 var Module = {
     canvas: (function() { return document.getElementById('canvas'); })(),
     onRuntimeInitialized: function() {
+        console.log('WASM runtime initialized');
         document.getElementById('loading').classList.add('hidden');
         setTimeout(function() {
             document.getElementById('loading').style.display = 'none';
             document.getElementById('canvas').focus();
         }, 400);
+    },
+    print: function(text) { console.log(text); },
+    printErr: function(text) {
+        console.error(text);
+        var el = document.getElementById('error-display');
+        if (el) { el.textContent += text + '\n'; el.style.display = 'block'; }
     },
     setStatus: function(text) {
         if (text === '') {

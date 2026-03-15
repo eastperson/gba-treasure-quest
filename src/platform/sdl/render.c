@@ -7,6 +7,7 @@
 
 #include <SDL2/SDL.h>
 #include <string.h>
+#include <stdio.h>
 #include "tiledata.h"
 
 /* ── Internal State ────────────────────────────────────── */
@@ -14,6 +15,8 @@ static SDL_Window   *g_window;
 static SDL_Renderer *g_renderer;
 static SDL_Texture  *g_framebuffer;
 static uint16_t      g_pixels[SCREEN_W * SCREEN_H];
+static uint32_t      g_pixels32[SCREEN_W * SCREEN_H]; /* 32-bit conversion buffer */
+static bool          g_use_32bit = false; /* true if ABGR1555 texture failed */
 static int           g_scale = 3;
 static bool          g_fullscreen = false;
 
@@ -122,7 +125,18 @@ static const uint8_t g_font_data[96][3] = {
 };
 
 void platform_init(void) {
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER);
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        printf("SDL_Init failed: %s\n", SDL_GetError());
+        return;
+    }
+    /* Init audio/gamecontroller separately so failures don't block video */
+    SDL_InitSubSystem(SDL_INIT_AUDIO);
+    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+
+#ifdef PLATFORM_WEB
+    /* Create opaque WebGL canvas — prevents transparent rendering */
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+#endif
 
     g_window = SDL_CreateWindow(
         "Treasure Quest: Seven Islands",
@@ -130,15 +144,46 @@ void platform_init(void) {
         SCREEN_W * g_scale, SCREEN_H * g_scale,
         SDL_WINDOW_RESIZABLE
     );
+    if (!g_window) {
+        printf("SDL_CreateWindow failed: %s\n", SDL_GetError());
+        return;
+    }
 
+    /* Try accelerated renderer first; fall back to software */
+#ifdef PLATFORM_WEB
+    g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED);
+#else
     g_renderer = SDL_CreateRenderer(g_window, -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+#endif
+    if (!g_renderer) {
+        printf("Accelerated renderer failed, trying software: %s\n", SDL_GetError());
+        g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_SOFTWARE);
+    }
+    if (!g_renderer) {
+        printf("SDL_CreateRenderer failed: %s\n", SDL_GetError());
+        return;
+    }
     SDL_RenderSetLogicalSize(g_renderer, SCREEN_W, SCREEN_H);
 
     g_framebuffer = SDL_CreateTexture(g_renderer,
         SDL_PIXELFORMAT_ABGR1555,
         SDL_TEXTUREACCESS_STREAMING,
         SCREEN_W, SCREEN_H);
+    if (!g_framebuffer) {
+        printf("ABGR1555 texture failed: %s, trying ARGB8888\n", SDL_GetError());
+        g_framebuffer = SDL_CreateTexture(g_renderer,
+            SDL_PIXELFORMAT_ARGB8888,
+            SDL_TEXTUREACCESS_STREAMING,
+            SCREEN_W, SCREEN_H);
+        g_use_32bit = true;
+    }
+    if (!g_framebuffer) {
+        printf("SDL_CreateTexture failed: %s\n", SDL_GetError());
+    }
+
+    printf("Platform init OK: window=%p renderer=%p fb=%p\n",
+           (void*)g_window, (void*)g_renderer, (void*)g_framebuffer);
 }
 
 void platform_shutdown(void) {
@@ -172,8 +217,23 @@ void platform_frame_start(void) {
 }
 
 void platform_frame_end(void) {
-    SDL_UpdateTexture(g_framebuffer, NULL, g_pixels,
-                      SCREEN_W * sizeof(uint16_t));
+    if (!g_renderer || !g_framebuffer) return;
+
+    if (g_use_32bit) {
+        /* Convert 15-bit GBA colors to 32-bit ARGB8888 */
+        for (int i = 0; i < SCREEN_W * SCREEN_H; i++) {
+            uint16_t c = g_pixels[i];
+            uint8_t r = (c & 0x001F) << 3;
+            uint8_t g = ((c >> 5) & 0x1F) << 3;
+            uint8_t b = ((c >> 10) & 0x1F) << 3;
+            g_pixels32[i] = 0xFF000000u | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+        }
+        SDL_UpdateTexture(g_framebuffer, NULL, g_pixels32,
+                          SCREEN_W * sizeof(uint32_t));
+    } else {
+        SDL_UpdateTexture(g_framebuffer, NULL, g_pixels,
+                          SCREEN_W * sizeof(uint16_t));
+    }
     SDL_RenderClear(g_renderer);
     SDL_RenderCopy(g_renderer, g_framebuffer, NULL, NULL);
     SDL_RenderPresent(g_renderer);
