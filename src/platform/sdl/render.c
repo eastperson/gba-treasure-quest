@@ -131,12 +131,13 @@ static const uint8_t g_font_data[96][3] = {
 void platform_init(void) {
     /* Init video first — audio may fail on mobile without user gesture */
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        printf("SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
         return;
     }
+    fprintf(stderr, "[init] SDL_Init OK\n");
     /* Try audio separately — non-fatal if it fails */
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
-        printf("SDL audio init skipped: %s\n", SDL_GetError());
+        fprintf(stderr, "[init] SDL audio skipped: %s\n", SDL_GetError());
     }
 
     g_window = SDL_CreateWindow(
@@ -146,18 +147,23 @@ void platform_init(void) {
         SDL_WINDOW_RESIZABLE
     );
     if (!g_window) {
-        printf("SDL_CreateWindow failed: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         return;
     }
+    fprintf(stderr, "[init] Window OK\n");
 
 #ifdef PLATFORM_WEB
-    /* Web: use PRESENTVSYNC — in Emscripten this maps to requestAnimationFrame
-     * mode via SDL_GL_SetSwapInterval(1), which is the correct frame timing. */
-    g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_PRESENTVSYNC);
+    /* Web: create renderer without PRESENTVSYNC (let emscripten_set_main_loop
+     * handle frame timing via requestAnimationFrame) */
+    g_renderer = SDL_CreateRenderer(g_window, -1, 0);
     if (!g_renderer) {
-        printf("SDL_CreateRenderer failed: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_CreateRenderer failed: %s\n", SDL_GetError());
         return;
     }
+    /* Force requestAnimationFrame timing mode */
+    SDL_GL_SetSwapInterval(1);
+    emscripten_set_main_loop_timing(EM_TIMING_RAF, 0);
+    fprintf(stderr, "[init] Renderer OK (RAF mode)\n");
     /* Web: always use ARGB8888 — avoids 16-bit format issues with WebGL */
     g_use_32bit = true;
     g_framebuffer = SDL_CreateTexture(g_renderer,
@@ -165,7 +171,9 @@ void platform_init(void) {
         SDL_TEXTUREACCESS_STREAMING,
         SCREEN_W, SCREEN_H);
     if (!g_framebuffer) {
-        printf("SDL_CreateTexture failed: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_CreateTexture failed: %s\n", SDL_GetError());
+    } else {
+        fprintf(stderr, "[init] Texture OK (ARGB8888)\n");
     }
 #else
     g_renderer = SDL_CreateRenderer(g_window, -1,
