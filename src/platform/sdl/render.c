@@ -181,13 +181,14 @@ void platform_frame_end(void) {
 
 /* ── Rendering ─────────────────────────────────────────── */
 void platform_clear(uint16_t color) {
+    color |= 0x8000; /* set alpha bit opaque */
     for (int i = 0; i < SCREEN_W * SCREEN_H; i++)
         g_pixels[i] = color;
 }
 
 static inline void put_pixel(int x, int y, uint16_t color) {
     if (x >= 0 && x < SCREEN_W && y >= 0 && y < SCREEN_H)
-        g_pixels[y * SCREEN_W + x] = color;
+        g_pixels[y * SCREEN_W + x] = color | 0x8000; /* set alpha bit opaque */
 }
 
 void platform_draw_tile(int x, int y, int tile_id, int palette) {

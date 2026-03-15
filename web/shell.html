@@ -210,7 +210,7 @@ canvas#canvas {
 <div id="game-header">Treasure Quest: Seven Islands</div>
 
 <div id="canvas-container">
-    <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
 </div>
 
 <div id="shoulder-row">
@@ -243,6 +243,12 @@ canvas#canvas {
 </div>
 
 <script>
+// Focus canvas on any click/tap for keyboard input
+document.addEventListener('click', function() {
+    var c = document.getElementById('canvas');
+    if (c) c.focus();
+});
+
 // Touch → Keyboard event injection
 (function() {
     const buttons = document.querySelectorAll('[data-key]');
@@ -296,6 +302,7 @@ var Module = {
         document.getElementById('loading').classList.add('hidden');
         setTimeout(function() {
             document.getElementById('loading').style.display = 'none';
+            document.getElementById('canvas').focus();
         }, 400);
     },
     setStatus: function(text) {
