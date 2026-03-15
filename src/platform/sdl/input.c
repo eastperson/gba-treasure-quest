@@ -16,12 +16,19 @@ bool g_quit_requested = false;
 
 #ifdef PLATFORM_WEB
 /* Touch input from JavaScript — Emscripten's keyboard hooks don't see
- * programmatically dispatched KeyboardEvents, so JS calls these directly. */
+ * programmatically dispatched KeyboardEvents, so JS calls these directly.
+ *
+ * g_touch_keys tracks currently-held touch buttons.
+ * g_touch_pressed accumulates any buttons pressed since the last poll,
+ * preventing quick taps from being lost between game frames (e.g. on
+ * 120Hz+ displays where the RAF callback fires faster than 60fps). */
 static uint16_t g_touch_keys = 0;
+static uint16_t g_touch_pressed = 0;
 
 EMSCRIPTEN_KEEPALIVE
 void web_key_down(int key_mask) {
     g_touch_keys |= (uint16_t)key_mask;
+    g_touch_pressed |= (uint16_t)key_mask;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -75,8 +82,11 @@ void platform_poll_input(void) {
         g_keys_current |= KEY_L;
 
 #ifdef PLATFORM_WEB
-    /* Merge touch input from JavaScript */
-    g_keys_current |= g_touch_keys;
+    /* Merge touch input from JavaScript.
+     * Use both held state AND buffered presses so quick taps
+     * between frames aren't lost. */
+    g_keys_current |= g_touch_keys | g_touch_pressed;
+    g_touch_pressed = 0;  /* Clear buffer after consumption */
 #endif
 
     /* Gamepad support */
