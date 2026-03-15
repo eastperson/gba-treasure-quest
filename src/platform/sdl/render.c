@@ -10,6 +10,10 @@
 #include <stdio.h>
 #include "tiledata.h"
 
+#ifdef PLATFORM_WEB
+#include <emscripten.h>
+#endif
+
 /* ── Internal State ────────────────────────────────────── */
 static SDL_Window   *g_window;
 static SDL_Renderer *g_renderer;
@@ -138,6 +142,10 @@ void platform_init(void) {
     /* Web: use basic renderer (no PRESENTVSYNC — emscripten_set_main_loop
      * handles frame timing via requestAnimationFrame) */
     g_renderer = SDL_CreateRenderer(g_window, -1, 0);
+    /* Force requestAnimationFrame mode — SDL_CreateRenderer may switch to
+     * setTimeout internally via SDL_GL_SetSwapInterval(0) */
+    SDL_GL_SetSwapInterval(1);
+    emscripten_set_main_loop_timing(EM_TIMING_RAF, 0);
     /* Web: always use ARGB8888 — avoids 16-bit format issues with WebGL */
     g_use_32bit = true;
     g_framebuffer = SDL_CreateTexture(g_renderer,
