@@ -42,8 +42,10 @@ canvas#canvas {
     image-rendering: crisp-edges;
     border: 2px solid #333;
     border-radius: 4px;
-    max-width: 100vw;
-    max-height: 50vh;
+    width: 100%;
+    max-width: 720px;
+    height: auto;
+    aspect-ratio: 240 / 160;
 }
 
 /* ── Touch Controls ─────────────────────────────── */
@@ -195,7 +197,7 @@ canvas#canvas {
 @media (hover: none), (pointer: coarse) {
     #touch-controls { display: flex; }
     #shoulder-row { display: flex; }
-    canvas#canvas { max-height: 40vh; }
+    canvas#canvas { max-height: 45vh; }
 }
 </style>
 </head>
@@ -326,7 +328,6 @@ var Module = {
     },
     setStatus: function(text) {
         if (text === '') {
-            // Final status — loading complete
             document.getElementById('progress-fill').style.width = '100%';
             return;
         }
@@ -342,6 +343,16 @@ var Module = {
         }
     }
 };
+
+// Fallback: if loading takes too long, force-hide loading screen
+setTimeout(function() {
+    var ld = document.getElementById('loading');
+    if (ld && ld.style.display !== 'none') {
+        console.warn('Loading timeout — forcing display');
+        ld.classList.add('hidden');
+        setTimeout(function() { ld.style.display = 'none'; }, 500);
+    }
+}, 15000);
 </script>
 
 {{{ SCRIPT }}}

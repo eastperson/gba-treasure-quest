@@ -129,7 +129,15 @@ static const uint8_t g_font_data[96][3] = {
 };
 
 void platform_init(void) {
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+    /* Init video first — audio may fail on mobile without user gesture */
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        printf("SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
+        return;
+    }
+    /* Try audio separately — non-fatal if it fails */
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+        printf("SDL audio init skipped: %s\n", SDL_GetError());
+    }
 
     g_window = SDL_CreateWindow(
         "Treasure Quest: Seven Islands",
@@ -137,11 +145,19 @@ void platform_init(void) {
         SCREEN_W * g_scale, SCREEN_H * g_scale,
         SDL_WINDOW_RESIZABLE
     );
+    if (!g_window) {
+        printf("SDL_CreateWindow failed: %s\n", SDL_GetError());
+        return;
+    }
 
 #ifdef PLATFORM_WEB
     /* Web: use basic renderer (no PRESENTVSYNC — emscripten_set_main_loop
      * handles frame timing via requestAnimationFrame) */
     g_renderer = SDL_CreateRenderer(g_window, -1, 0);
+    if (!g_renderer) {
+        printf("SDL_CreateRenderer failed: %s\n", SDL_GetError());
+        return;
+    }
     /* Force requestAnimationFrame mode — SDL_CreateRenderer may switch to
      * setTimeout internally via SDL_GL_SetSwapInterval(0) */
     SDL_GL_SetSwapInterval(1);
@@ -152,6 +168,9 @@ void platform_init(void) {
         SDL_PIXELFORMAT_ARGB8888,
         SDL_TEXTUREACCESS_STREAMING,
         SCREEN_W, SCREEN_H);
+    if (!g_framebuffer) {
+        printf("SDL_CreateTexture failed: %s\n", SDL_GetError());
+    }
 #else
     g_renderer = SDL_CreateRenderer(g_window, -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
