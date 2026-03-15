@@ -125,18 +125,7 @@ static const uint8_t g_font_data[96][3] = {
 };
 
 void platform_init(void) {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        printf("SDL_Init failed: %s\n", SDL_GetError());
-        return;
-    }
-    /* Init audio/gamecontroller separately so failures don't block video */
-    SDL_InitSubSystem(SDL_INIT_AUDIO);
-    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
-
-#ifdef PLATFORM_WEB
-    /* Create opaque WebGL canvas — prevents transparent rendering */
-    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-#endif
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 
     g_window = SDL_CreateWindow(
         "Treasure Quest: Seven Islands",
@@ -144,46 +133,29 @@ void platform_init(void) {
         SCREEN_W * g_scale, SCREEN_H * g_scale,
         SDL_WINDOW_RESIZABLE
     );
-    if (!g_window) {
-        printf("SDL_CreateWindow failed: %s\n", SDL_GetError());
-        return;
-    }
 
-    /* Try accelerated renderer first; fall back to software */
 #ifdef PLATFORM_WEB
-    g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED);
+    /* Web: use basic renderer (no PRESENTVSYNC — emscripten_set_main_loop
+     * handles frame timing via requestAnimationFrame) */
+    g_renderer = SDL_CreateRenderer(g_window, -1, 0);
+    /* Web: always use ARGB8888 — avoids 16-bit format issues with WebGL */
+    g_use_32bit = true;
+    g_framebuffer = SDL_CreateTexture(g_renderer,
+        SDL_PIXELFORMAT_ARGB8888,
+        SDL_TEXTUREACCESS_STREAMING,
+        SCREEN_W, SCREEN_H);
 #else
     g_renderer = SDL_CreateRenderer(g_window, -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-#endif
-    if (!g_renderer) {
-        printf("Accelerated renderer failed, trying software: %s\n", SDL_GetError());
-        g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_SOFTWARE);
-    }
-    if (!g_renderer) {
-        printf("SDL_CreateRenderer failed: %s\n", SDL_GetError());
-        return;
-    }
-    SDL_RenderSetLogicalSize(g_renderer, SCREEN_W, SCREEN_H);
-
     g_framebuffer = SDL_CreateTexture(g_renderer,
         SDL_PIXELFORMAT_ABGR1555,
         SDL_TEXTUREACCESS_STREAMING,
         SCREEN_W, SCREEN_H);
-    if (!g_framebuffer) {
-        printf("ABGR1555 texture failed: %s, trying ARGB8888\n", SDL_GetError());
-        g_framebuffer = SDL_CreateTexture(g_renderer,
-            SDL_PIXELFORMAT_ARGB8888,
-            SDL_TEXTUREACCESS_STREAMING,
-            SCREEN_W, SCREEN_H);
-        g_use_32bit = true;
-    }
-    if (!g_framebuffer) {
-        printf("SDL_CreateTexture failed: %s\n", SDL_GetError());
-    }
+#endif
 
-    printf("Platform init OK: window=%p renderer=%p fb=%p\n",
-           (void*)g_window, (void*)g_renderer, (void*)g_framebuffer);
+    if (g_renderer) {
+        SDL_RenderSetLogicalSize(g_renderer, SCREEN_W, SCREEN_H);
+    }
 }
 
 void platform_shutdown(void) {
