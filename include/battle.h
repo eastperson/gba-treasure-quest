@@ -32,6 +32,14 @@ typedef enum {
     CMD_COUNT,
 } BattleCommand;
 
+/* ── Element Types ────────────────────────────────────── */
+typedef enum {
+    ELEM_NONE = 0,
+    ELEM_FIRE,
+    ELEM_ICE,
+    ELEM_THUNDER,
+} Element;
+
 /* ── Enemy Data ───────────────────────────────────────── */
 typedef struct {
     char    name[MAX_NAME_LEN];
@@ -43,6 +51,8 @@ typedef struct {
     uint16_t exp_reward;
     uint16_t gold_reward;
     uint8_t sprite_id;
+    uint8_t weakness;    /* Element enum — takes 1.5x damage from this */
+    uint8_t resistance;  /* Element enum — takes 0.5x damage from this */
 } EnemyData;
 
 /* ── Spell Data ───────────────────────────────────────── */
@@ -53,6 +63,7 @@ typedef struct {
     int16_t mp_cost;
     int16_t power;      /* damage multiplier (x10) or heal amount */
     bool    heals;      /* true = heals player, false = damages enemy */
+    uint8_t element;    /* Element enum for weakness/resistance checks */
 } SpellData;
 
 /* ── Battle Context ───────────────────────────────────── */
@@ -81,6 +92,9 @@ void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *in
 void battle_update(BattleContext *bc, Character *hero);
 void battle_render(BattleContext *bc, Character *hero);
 int  battle_calc_damage(int atk, int def);
+int  battle_calc_spell_damage(int power, int caster_atk, int target_def,
+                              uint8_t spell_element, uint8_t enemy_weakness,
+                              uint8_t enemy_resistance, bool *out_super, bool *out_resist);
 int  battle_get_random_enemy_for_island(int island_id, uint32_t rng);
 
 #endif /* BATTLE_H */

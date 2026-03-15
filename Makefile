@@ -108,6 +108,19 @@ build/web/%.o: src/%.c
 	$(WEB_CC) $(WEB_CFLAGS) -c $< -o $@
 
 # ============================================================
+# Test Target (host-compiled, no external deps)
+# ============================================================
+.PHONY: test
+
+test:
+	@mkdir -p build/test
+	@echo "=== Building and running tests ==="
+	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_inventory.c -o build/test/test_inventory && ./build/test/test_inventory
+	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_battle.c -o build/test/test_battle && ./build/test/test_battle
+	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_save.c -o build/test/test_save && ./build/test/test_save
+	@echo "=== All tests complete ==="
+
+# ============================================================
 # Utilities
 # ============================================================
 .PHONY: clean all serve

@@ -21,30 +21,30 @@ static uint32_t battle_rand(void) {
 #define ENEMY_COUNT 14
 
 static const EnemyData enemy_table[ENEMY_COUNT] = {
-    /* name             hp  max  atk def spd  exp  gold sprite */
-    /* Island 0-1 enemies (indices 0-1) */
-    { "Slime",          10, 10,   4,  2,  3,   5,   3,  16 },
-    { "Goblin",         18, 18,   7,  3,  5,  12,   8,  17 },
-    /* Island 2-3 enemies (indices 2-3) */
-    { "Scorpion",       22, 22,  10,  4,  6,  18,  12,  18 },
-    { "Fire Bat",       16, 16,  12,  3,  9,  15,  10,  19 },
-    /* Island 4-5 enemies (indices 4-5) */
-    { "Ice Golem",      35, 35,  13,  8,  3,  25,  18,  20 },
-    { "Wraith",         28, 28,  15,  5,  7,  22,  15,  21 },
-    /* Island 6 enemy (index 6) */
-    { "Temple Guard",   40, 40,  16, 10,  5,  30,  25,  22 },
+    /* name             hp  max  atk def spd  exp  gold sprite  weak        resist     */
+    /* Island 0-1 enemies (indices 0-1) — generic */
+    { "Slime",          10, 10,   4,  2,  3,   5,   3,  16, ELEM_NONE,    ELEM_NONE    },
+    { "Goblin",         18, 18,   7,  3,  5,  12,   8,  17, ELEM_NONE,    ELEM_NONE    },
+    /* Island 2-3 enemies (indices 2-3) — fire-themed */
+    { "Scorpion",       22, 22,  10,  4,  6,  18,  12,  18, ELEM_ICE,     ELEM_FIRE    },
+    { "Fire Bat",       16, 16,  12,  3,  9,  15,  10,  19, ELEM_ICE,     ELEM_FIRE    },
+    /* Island 4-5 enemies (indices 4-5) — ice-themed / water */
+    { "Ice Golem",      35, 35,  13,  8,  3,  25,  18,  20, ELEM_FIRE,    ELEM_ICE     },
+    { "Wraith",         28, 28,  15,  5,  7,  22,  15,  21, ELEM_THUNDER, ELEM_ICE     },
+    /* Island 6 enemy (index 6) — mechanical/thunder */
+    { "Temple Guard",   40, 40,  16, 10,  5,  30,  25,  22, ELEM_FIRE,    ELEM_THUNDER },
     /* Bosses (indices 7-9) */
-    /* Island 3 boss */
-    { "Fire Dragon",    80, 80,  18, 10,  6,  50,  40,  23 },
-    /* Island 5 boss */
-    { "Kraken",        100,100,  20, 12,  5,  70,  50,  24 },
-    /* Island 6 boss */
-    { "Sky Lord",      150,150,  25, 15,  7, 100,  80,  25 },
+    /* Island 3 boss — fire dragon: weak to Ice, resists Fire */
+    { "Fire Dragon",    80, 80,  18, 10,  6,  50,  40,  23, ELEM_ICE,     ELEM_FIRE    },
+    /* Island 5 boss — water/kraken: weak to Thunder, resists Ice */
+    { "Kraken",        100,100,  20, 12,  5,  70,  50,  24, ELEM_THUNDER, ELEM_ICE     },
+    /* Island 6 boss — sky/thunder: weak to Ice, resists Thunder */
+    { "Sky Lord",      150,150,  25, 15,  7, 100,  80,  25, ELEM_ICE,     ELEM_THUNDER },
     /* Legacy enemies kept for compatibility (indices 10-13) */
-    { "Wolf",           15, 15,   9,  2,  8,  10,   5,  18 },
-    { "Skeleton",       25, 25,   8,  6,  4,  18,  15,  19 },
-    { "Boss Pirate",    60, 60,  12,  8,  6,  50,  40,  20 },
-    { "Imp",            12, 12,   5,  2,  7,   7,   5,  16 },
+    { "Wolf",           15, 15,   9,  2,  8,  10,   5,  18, ELEM_NONE,    ELEM_NONE    },
+    { "Skeleton",       25, 25,   8,  6,  4,  18,  15,  19, ELEM_NONE,    ELEM_NONE    },
+    { "Boss Pirate",    60, 60,  12,  8,  6,  50,  40,  20, ELEM_NONE,    ELEM_NONE    },
+    { "Imp",            12, 12,   5,  2,  7,   7,   5,  16, ELEM_FIRE,    ELEM_NONE    },
 };
 
 /* ── Command names for menu ───────────────────────────── */
@@ -74,10 +74,10 @@ static const SkillData g_char_skills[4] = {
 
 /* ── Spell Table ─────────────────────────────────────── */
 static const SpellData g_spells[MAX_SPELLS] = {
-    { "Fire",    5,  15, false },  /* 5 MP, 15 power damage */
-    { "Ice",     8,  22, false },  /* 8 MP, 22 power damage */
-    { "Thunder", 12, 30, false },  /* 12 MP, 30 power damage */
-    { "Heal",    4,  20, true  },  /* 4 MP, heals 20 HP */
+    { "Fire",    5,  15, false, ELEM_FIRE    },  /* 5 MP, 15 power damage */
+    { "Ice",     8,  22, false, ELEM_ICE     },  /* 8 MP, 22 power damage */
+    { "Thunder", 12, 30, false, ELEM_THUNDER },  /* 12 MP, 30 power damage */
+    { "Heal",    4,  20, true,  ELEM_NONE    },  /* 4 MP, heals 20 HP */
 };
 
 /* ── Damage Calculation ───────────────────────────────── */
@@ -85,6 +85,32 @@ int battle_calc_damage(int atk, int def) {
     int base = atk - def;
     int variance = (int)(battle_rand() % 5) - 2;  /* -2 to +2 */
     int dmg = base + variance;
+    if (dmg < 1) dmg = 1;
+    return dmg;
+}
+
+/* ── Spell Damage Calculation (with element multipliers) ── */
+int battle_calc_spell_damage(int power, int caster_atk, int target_def,
+                             uint8_t spell_element, uint8_t enemy_weakness,
+                             uint8_t enemy_resistance, bool *out_super, bool *out_resist) {
+    int dmg = power + caster_atk / 3 - target_def / 3;
+    int variance = (int)(battle_rand() % 5) - 2;
+    dmg += variance;
+
+    if (out_super) *out_super = false;
+    if (out_resist) *out_resist = false;
+
+    /* Apply element multipliers */
+    if (spell_element != ELEM_NONE) {
+        if (spell_element == enemy_weakness) {
+            dmg = (dmg * 3) / 2;  /* 1.5x super effective */
+            if (out_super) *out_super = true;
+        } else if (spell_element == enemy_resistance) {
+            dmg = dmg / 2;        /* 0.5x not very effective */
+            if (out_resist) *out_resist = true;
+        }
+    }
+
     if (dmg < 1) dmg = 1;
     return dmg;
 }
@@ -337,10 +363,11 @@ void battle_update(BattleContext *bc, Character *hero) {
                     bc->state = BATTLE_ENEMY_TURN;
                     bc->turn_timer = 0;
                 } else {
-                    int dmg = sp->power + hero->atk / 3 - bc->enemy.def / 3;
-                    int variance = (int)(battle_rand() % 5) - 2;
-                    dmg += variance;
-                    if (dmg < 1) dmg = 1;
+                    bool super_eff = false, resist_eff = false;
+                    int dmg = battle_calc_spell_damage(
+                        sp->power, hero->atk, bc->enemy.def,
+                        sp->element, bc->enemy.weakness, bc->enemy.resistance,
+                        &super_eff, &resist_eff);
                     bc->enemy.hp -= (int16_t)dmg;
                     bc->damage_display = (int16_t)dmg;
                     fx_spawn(FX_DAMAGE_NUM, 116, 10, dmg, 30);
@@ -360,8 +387,16 @@ void battle_update(BattleContext *bc, Character *hero) {
                             break;
                     }
                     fx_spawn(FX_ENEMY_SHAKE, 0, 0, 0, 10);
-                    snprintf(bc->message, sizeof(bc->message),
-                             "%s deals %d damage!", sp->name, dmg);
+                    if (super_eff) {
+                        snprintf(bc->message, sizeof(bc->message),
+                                 "Super effective! %s %d!", sp->name, dmg);
+                    } else if (resist_eff) {
+                        snprintf(bc->message, sizeof(bc->message),
+                                 "Not very effective.. %s %d", sp->name, dmg);
+                    } else {
+                        snprintf(bc->message, sizeof(bc->message),
+                                 "%s deals %d damage!", sp->name, dmg);
+                    }
                     bc->state = BATTLE_EXECUTE;
                     bc->turn_timer = 1; /* skip frame 0 damage calc */
                 }
@@ -692,6 +727,24 @@ int battle_get_random_enemy_for_island(int island_id, uint32_t rng) {
     }
 }
 
+/* ── HP Bar Drawing ───────────────────────────────────── */
+static void draw_hp_bar(int x, int y, int current_hp, int max_hp, int width) {
+    if (max_hp <= 0) return;
+    int filled = (current_hp * width) / max_hp;
+    if (filled < 0) filled = 0;
+    if (filled > width) filled = width;
+
+    int ratio = (current_hp * 100) / max_hp;
+    uint16_t color;
+    if (ratio > 50)      color = 0x03E0;  /* green */
+    else if (ratio > 25) color = 0x03FF;  /* yellow */
+    else                 color = 0x001F;  /* red */
+
+    platform_draw_rect(x, y, width, 4, 0x294A);   /* gray background */
+    if (filled > 0)
+        platform_draw_rect(x, y, filled, 4, color); /* filled portion */
+}
+
 /* ── Render ────────────────────────────────────────────── */
 void battle_render(BattleContext *bc, Character *hero) {
     platform_clear(0x1084);  /* dark blue-gray background */
@@ -722,19 +775,10 @@ void battle_render(BattleContext *bc, Character *hero) {
         /* HP bar with border */
         platform_draw_rect(4, 55, 104, 12, 0x294A);  /* border */
         platform_draw_rect(5, 56, 102, 10, 0x0000);  /* bg */
-        if (bc->enemy.max_hp > 0) {
-            int bar_w = (bc->enemy.hp * 100) / bc->enemy.max_hp;
-            if (bar_w < 0) bar_w = 0;
-            /* Color: green > yellow > red based on HP% */
-            uint16_t bar_color;
-            int pct = (bc->enemy.hp * 100) / bc->enemy.max_hp;
-            if (pct > 50)      bar_color = 0x03E0; /* green */
-            else if (pct > 25) bar_color = 0x03FF; /* yellow */
-            else               bar_color = 0x001F; /* red */
-            platform_draw_rect(6, 57, bar_w, 8, bar_color);
-        }
-        char ehp[16];
-        snprintf(ehp, sizeof(ehp), "%d/%d", bc->enemy.hp, bc->enemy.max_hp);
+        draw_hp_bar(6, 59, bc->enemy.hp, bc->enemy.max_hp, 100);
+
+        char ehp[24];
+        snprintf(ehp, sizeof(ehp), "HP:%d/%d", bc->enemy.hp, bc->enemy.max_hp);
         platform_draw_text(112, 57, ehp, 0x5294);
     }
 
@@ -749,13 +793,7 @@ void battle_render(BattleContext *bc, Character *hero) {
         /* Hero HP bar */
         platform_draw_rect(4, 89, 112, 8, 0x0842);
         platform_draw_rect(5, 90, 110, 6, 0x0000);
-        if (hero->max_hp > 0) {
-            int hw = (hero->hp * 108) / hero->max_hp;
-            if (hw < 0) hw = 0;
-            int pct = (hero->hp * 100) / hero->max_hp;
-            uint16_t hc = pct > 50 ? 0x03E0 : pct > 25 ? 0x03FF : 0x001F;
-            platform_draw_rect(6, 91, hw, 4, hc);
-        }
+        draw_hp_bar(6, 91, hero->hp, hero->max_hp, 108);
         snprintf(line2, sizeof(line2), "HP:%d/%d", hero->hp, hero->max_hp);
         platform_draw_text(4, 99, line2, 0x7FFF);
 
