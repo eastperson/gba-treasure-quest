@@ -164,27 +164,30 @@ void platform_draw_sprite(int x, int y, int sprite_id,
                           int palette, bool flip_h) {
     (void)palette;
     const u8 *pat;
-    u16 color;
+    const u16 *row_colors = NULL;
+    u16 fallback = 0x7FFF;
 
     if (sprite_id <= 7) {
         int dir = sprite_id / 2;
         int frame = sprite_id % 2;
         if (dir > 3) dir = 0;
         pat = SPRITE_PLAYER[dir][frame];
-        color = COLOR_PLAYER_BODY;
+        row_colors = PLAYER_ROW_COLORS;
     } else if (sprite_id == 8) {
         pat = SPRITE_NPC;
-        color = COLOR_NPC_BODY;
+        row_colors = NPC_ROW_COLORS;
     } else if (sprite_id >= 10 && sprite_id < 10 + COLOR_ENEMY_COLORS_COUNT) {
-        pat = SPRITE_ENEMIES[sprite_id - 10];
-        color = COLOR_ENEMIES[sprite_id - 10];
+        int idx = sprite_id - 10;
+        pat = SPRITE_ENEMIES[idx];
+        row_colors = ENEMY_ROW_COLORS[idx];
     } else {
         pat = SPRITE_NPC;
-        color = 0x7FFF;
+        row_colors = NPC_ROW_COLORS;
     }
 
     for (int dy = 0; dy < 8; dy++) {
         u8 row = pat[dy];
+        u16 color = row_colors ? row_colors[dy] : fallback;
         for (int dx = 0; dx < 8; dx++) {
             int sx = flip_h ? (7 - dx) : dx;
             if (row & (0x80 >> sx)) {

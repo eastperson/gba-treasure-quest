@@ -267,29 +267,31 @@ void platform_draw_sprite(int x, int y, int sprite_id,
                           int palette, bool flip_h) {
     (void)palette;
     const uint8_t *pat;
-    uint16_t color;
+    const uint16_t *row_colors = NULL;  /* per-row coloring */
+    uint16_t fallback_color = 0x7FFF;
 
     /* sprite_id encoding: player frames 0-7, NPC=8, enemies 10-14 */
     if (sprite_id <= 7) {
-        /* Player: dir=sprite_id/2, frame=sprite_id%2 */
         int dir = sprite_id / 2;
         int frame = sprite_id % 2;
         if (dir > 3) dir = 0;
         pat = SPRITE_PLAYER[dir][frame];
-        color = COLOR_PLAYER_BODY;
+        row_colors = PLAYER_ROW_COLORS;
     } else if (sprite_id == 8) {
         pat = SPRITE_NPC;
-        color = COLOR_NPC_BODY;
+        row_colors = NPC_ROW_COLORS;
     } else if (sprite_id >= 10 && sprite_id < 10 + COLOR_ENEMY_COLORS_COUNT) {
-        pat = SPRITE_ENEMIES[sprite_id - 10];
-        color = COLOR_ENEMIES[sprite_id - 10];
+        int idx = sprite_id - 10;
+        pat = SPRITE_ENEMIES[idx];
+        row_colors = ENEMY_ROW_COLORS[idx];
     } else {
         pat = SPRITE_NPC;
-        color = 0x7FFF;
+        row_colors = NPC_ROW_COLORS;
     }
 
     for (int dy = 0; dy < 8; dy++) {
         uint8_t row = pat[dy];
+        uint16_t color = row_colors ? row_colors[dy] : fallback_color;
         for (int dx = 0; dx < 8; dx++) {
             int sx = flip_h ? (7 - dx) : dx;
             if (row & (0x80 >> sx)) {
@@ -305,29 +307,105 @@ void platform_draw_rect(int x, int y, int w, int h, uint16_t color) {
             put_pixel(x + dx, y + dy, color);
 }
 
-void platform_draw_text(int x, int y, const char *text, uint16_t color) {
-    int cx = x;
-    while (*text) {
-        int ch = (unsigned char)*text - 32;
-        if (ch >= 0 && ch < 96) {
-            /*
-             * Each glyph is 3 bytes = 24 bits for a 4-wide x 6-tall bitmap.
-             * Bits are packed MSB-first: bit 23 = row0,col0 ... bit 0 = row5,col3.
-             */
-            const uint8_t *gdata = g_font_data[ch];
-            uint32_t glyph = ((uint32_t)gdata[0] << 16)
-                           | ((uint32_t)gdata[1] << 8)
-                           |  (uint32_t)gdata[2];
-            for (int row = 0; row < 6; row++) {
-                for (int col = 0; col < 4; col++) {
-                    if (glyph & (1u << (23 - row * 4 - col))) {
-                        put_pixel(cx + col, y + row, color);
-                    }
+/*
+ * Korean text rendering via Emscripten EM_JS.
+ * Renders Unicode text using browser's Canvas 2D API directly into
+ * the game's pixel buffer for pixel-art style Korean text.
+ */
+#ifdef PLATFORM_WEB
+EM_JS(void, js_draw_korean_char, (int x, int y, int codepoint,
+                                   int cr, int cg, int cb,
+                                   int buf_ptr, int sw, int sh), {
+    /* Reuse or create a small offscreen canvas for text rendering */
+    if (!Module._krCanvas) {
+        Module._krCanvas = document.createElement('canvas');
+        Module._krCanvas.width = 12;
+        Module._krCanvas.height = 12;
+        Module._krCtx = Module._krCanvas.getContext('2d');
+    }
+    var cvs = Module._krCanvas;
+    var ctx = Module._krCtx;
+    ctx.clearRect(0, 0, 12, 12);
+
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillStyle = 'white';
+    ctx.textBaseline = 'top';
+    ctx.fillText(String.fromCodePoint(codepoint), 0, 1);
+
+    var imgData = ctx.getImageData(0, 0, 10, 11);
+    var data = imgData.data;
+
+    /* Pack the target color as BGR555 with alpha bit */
+    var bgr = ((cb >> 3) << 10) | ((cg >> 3) << 5) | (cr >> 3) | 0x8000;
+
+    for (var py = 0; py < 11; py++) {
+        for (var px = 0; px < 10; px++) {
+            var idx = (py * 10 + px) * 4;
+            if (data[idx + 3] > 80) {
+                var sx = x + px;
+                var sy = y + py;
+                if (sx >= 0 && sx < sw && sy >= 0 && sy < sh) {
+                    HEAP16[(buf_ptr >> 1) + sy * sw + sx] = bgr;
                 }
             }
         }
-        cx += 5; /* 4px glyph + 1px spacing */
-        text++;
+    }
+});
+#endif /* PLATFORM_WEB */
+
+void platform_draw_text(int x, int y, const char *text, uint16_t color) {
+    int cx = x;
+    while (*text) {
+        unsigned char c = (unsigned char)*text;
+
+        if (c < 0x80) {
+            /* ASCII — use existing 4x6 bitmap font */
+            if (c == '\n') {
+                cx = x;
+                y += 8;
+                text++;
+                continue;
+            }
+            int ch = c - 32;
+            if (ch >= 0 && ch < 96) {
+                const uint8_t *gdata = g_font_data[ch];
+                uint32_t glyph = ((uint32_t)gdata[0] << 16)
+                               | ((uint32_t)gdata[1] << 8)
+                               |  (uint32_t)gdata[2];
+                for (int row = 0; row < 6; row++) {
+                    for (int col = 0; col < 4; col++) {
+                        if (glyph & (1u << (23 - row * 4 - col))) {
+                            put_pixel(cx + col, y + row, color);
+                        }
+                    }
+                }
+            }
+            cx += 5;
+            text++;
+        }
+#ifdef PLATFORM_WEB
+        else if (c >= 0xE0 && c <= 0xEF && text[1] && text[2]) {
+            /* 3-byte UTF-8: covers Korean (U+AC00-U+D7A3), punctuation, etc. */
+            int cp = ((c & 0x0F) << 12)
+                   | (((unsigned char)text[1] & 0x3F) << 6)
+                   | ((unsigned char)text[2] & 0x3F);
+            /* Convert BGR555 to RGB components */
+            uint8_t r = (color & 0x001F) << 3;
+            uint8_t g = ((color >> 5) & 0x1F) << 3;
+            uint8_t b = ((color >> 10) & 0x1F) << 3;
+            js_draw_korean_char(cx, y, cp, r, g, b,
+                                (int)(intptr_t)g_pixels, SCREEN_W, SCREEN_H);
+            cx += 11; /* Korean char advance */
+            text += 3;
+        }
+#endif
+        else {
+            /* Skip unsupported multi-byte UTF-8 */
+            if (c >= 0xF0) text += 4;
+            else if (c >= 0xE0) text += 3;
+            else if (c >= 0xC0) text += 2;
+            else text++;
+        }
     }
 }
 

@@ -9,6 +9,7 @@
 
 /* ── Game States ───────────────────────────────────────── */
 typedef enum {
+    STATE_INTRO,
     STATE_TITLE,
     STATE_WORLD,
     STATE_BATTLE,
@@ -102,7 +103,11 @@ typedef struct {
     bool        victory;          /* true = all treasures, false = defeat */
     char        drop_msg[48];     /* item drop message after battle */
     uint8_t     drop_msg_timer;   /* frames remaining to show drop message */
+    uint8_t     intro_page;       /* current intro story page (0-based) */
 } GameContext;
+
+/* ── Intro Screen ─────────────────────────────────────── */
+#define INTRO_PAGES  4
 
 /* ── Core Functions ────────────────────────────────────── */
 void game_init(GameContext *ctx);
@@ -110,6 +115,8 @@ void game_update(GameContext *ctx);
 void game_render(GameContext *ctx);
 
 /* ── State Handlers ────────────────────────────────────── */
+void state_intro_update(GameContext *ctx);
+void state_intro_render(GameContext *ctx);
 void state_title_update(GameContext *ctx);
 void state_title_render(GameContext *ctx);
 void state_world_update(GameContext *ctx);

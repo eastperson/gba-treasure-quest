@@ -33,7 +33,8 @@ static SpriteAnim g_player_anim;
 /* ── Initialization ────────────────────────────────────── */
 void game_init(GameContext *ctx) {
     memset(ctx, 0, sizeof(GameContext));
-    ctx->state   = STATE_TITLE;
+    ctx->state   = STATE_INTRO;
+    ctx->intro_page = 0;
     ctx->running = true;
 
     /* Default starting character */
@@ -115,6 +116,7 @@ void game_update(GameContext *ctx) {
     }
 
     switch (ctx->state) {
+        case STATE_INTRO:     state_intro_update(ctx);  break;
         case STATE_TITLE:     state_title_update(ctx);  break;
         case STATE_WORLD:     state_world_update(ctx);  break;
         case STATE_BATTLE:    state_battle_update(ctx);  break;
@@ -150,6 +152,7 @@ void game_render(GameContext *ctx) {
     platform_frame_start();
 
     switch (ctx->state) {
+        case STATE_INTRO:     state_intro_render(ctx);  break;
         case STATE_TITLE:     state_title_render(ctx);  break;
         case STATE_WORLD:     state_world_render(ctx);  break;
         case STATE_BATTLE:    state_battle_render(ctx);  break;
@@ -185,10 +188,117 @@ void game_render(GameContext *ctx) {
     platform_frame_end();
 }
 
+/* ── Intro Story Screen ───────────────────────────────── */
+/* Story text for each intro page (Korean on web, English fallback) */
+#ifdef PLATFORM_WEB
+static const char *INTRO_TEXT[INTRO_PAGES] = {
+    "\xEC\x98\xA4\xEB\x9E\x98\xEC\xA0\x84, \xEC\x9D\xBC\xEA\xB3\xB1 \xEA\xB0\x9C\xEC\x9D\x98 \xEC\x84\xAC\xEC\x97\x90\n"
+    "\xEC\xA0\x84\xEC\x84\xA4\xEC\x9D\x98 \xEB\xB3\xB4\xEB\xAC\xBC\xEC\x9D\xB4\n"
+    "\xED\x9D\xA9\xEC\x96\xB4\xEC\xA1\x8C\xEB\x8B\xA4\xEA\xB3\xA0 \xED\x95\xA9\xEB\x8B\x88\xEB\x8B\xA4...",
+    /* 오래전, 일곱 개의 섬에\n전설의 보물이\n흩어졌다고 합니다... */
+
+    "\xEA\xB0\x81 \xEC\x84\xAC\xEC\x97\x90\xEB\x8A\x94 \xEB\xAC\xB4\xEC\x8B\x9C\xEB\xAC\xB4\xEC\x8B\x9C\xED\x95\x9C\n"
+    "\xEB\xAA\xAC\xEC\x8A\xA4\xED\x84\xB0\xEC\x99\x80 \xEB\x93\x9C\xEB\x9E\x98\xEA\xB3\xA4\xEC\x9D\xB4\n"
+    "\xEB\xB3\xB4\xEB\xAC\xBC\xEC\x9D\x84 \xEC\xA7\x80\xED\x82\xA4\xEA\xB3\xA0 \xEC\x9E\x88\xEC\x8A\xB5\xEB\x8B\x88\xEB\x8B\xA4.",
+    /* 각 섬에는 무시무시한\n몬스터와 드래곤이\n보물을 지키고 있습니다. */
+
+    "\xEB\x8B\xB9\xEC\x8B\xA0\xEC\x9D\x80 \xEC\x9A\xA9\xEA\xB0\x90\xED\x95\x9C \xEB\xAA\xA8\xED\x97\x98\xEA\xB0\x80!\n"
+    "\xEB\x8F\x99\xEB\xA3\x8C\xEB\x93\xA4\xEC\x9D\x84 \xEB\xAA\xA8\xEC\x9C\xBC\xEA\xB3\xA0\n"
+    "\xEC\x9D\xBC\xEA\xB3\xB1 \xEC\x84\xAC\xEC\x9D\x84 \xED\x83\x90\xED\x97\x98\xED\x95\x98\xEC\x84\xB8\xEC\x9A\x94!",
+    /* 당신은 용감한 모험가!\n동료들을 모으고\n일곱 섬을 탐험하세요! */
+
+    "\xEB\xAA\xA8\xEB\x93\xA0 \xEB\xB3\xB4\xEB\xAC\xBC\xEC\x9D\x84 \xEC\xB0\xBE\xEC\x95\x84\n"
+    "\xEC\xA0\x84\xEC\x84\xA4\xEC\x9D\x98 \xEB\xB9\x84\xEB\xB0\x80\xEC\x9D\x84\n"
+    "\xEB\xB0\x9D\xED\x98\x80\xEC\xA3\xBC\xEC\x84\xB8\xEC\x9A\x94!",
+    /* 모든 보물을 찾아\n전설의 비밀을\n밝혀주세요! */
+};
+#else
+static const char *INTRO_TEXT[INTRO_PAGES] = {
+    "Long ago, legendary\ntreasures were scattered\nacross seven islands...",
+    "Fearsome monsters and\ndragons guard the\ntreasures on each island.",
+    "You are a brave adventurer!\nGather companions and\nexplore the seven islands!",
+    "Find all the treasures\nand uncover the secret\nof the legend!",
+};
+#endif
+
+void state_intro_update(GameContext *ctx) {
+    uint16_t keys = platform_keys_pressed();
+    if (keys & (KEY_A | KEY_START)) {
+        audio_play_sfx(SFX_CONFIRM);
+        ctx->intro_page++;
+        if (ctx->intro_page >= INTRO_PAGES) {
+            ctx->state = STATE_TITLE;
+        }
+    }
+    /* Skip intro with B */
+    if (keys & KEY_B) {
+        ctx->state = STATE_TITLE;
+    }
+}
+
+void state_intro_render(GameContext *ctx) {
+    platform_clear(0x0000); /* black */
+
+    /* Starfield-like decorative dots */
+    for (int i = 0; i < 20; i++) {
+        int sx = (i * 47 + ctx->frame_count / 3) % SCREEN_W;
+        int sy = (i * 31 + 17) % SCREEN_H;
+        uint16_t star_c = (ctx->frame_count / 10 + i) % 3 == 0 ? 0x5294 : 0x294A;
+        platform_draw_rect(sx, sy, 1, 1, star_c);
+    }
+
+    /* Page indicator dots */
+    for (int i = 0; i < INTRO_PAGES; i++) {
+        uint16_t dot_c = (i == ctx->intro_page) ? 0x7FFF : 0x294A;
+        platform_draw_rect(106 + i * 10, 140, 4, 4, dot_c);
+    }
+
+    /* Text box */
+    platform_draw_rect(16, 30, 208, 90, 0x0421); /* dark border */
+    platform_draw_rect(18, 32, 204, 86, 0x0842); /* slightly lighter bg */
+    platform_draw_rect(20, 34, 200, 82, 0x0000); /* black interior */
+
+    /* Story text */
+    const char *page_text = INTRO_TEXT[ctx->intro_page];
+    /* Render line by line */
+    int tx = 28, ty = 44;
+    const char *p = page_text;
+    while (*p) {
+        if (*p == '\n') {
+            tx = 28;
+            ty += 16;
+            p++;
+            continue;
+        }
+        /* Find end of this line */
+        const char *line_end = p;
+        while (*line_end && *line_end != '\n') line_end++;
+        /* Draw this segment */
+        int seg_len = (int)(line_end - p);
+        char line_buf[64];
+        if (seg_len >= (int)sizeof(line_buf)) seg_len = sizeof(line_buf) - 1;
+        memcpy(line_buf, p, seg_len);
+        line_buf[seg_len] = '\0';
+        platform_draw_text(tx, ty, line_buf, 0x7FFF);
+        p = line_end;
+        if (*p == '\n') { p++; tx = 28; ty += 16; }
+    }
+
+    /* Prompt */
+    if ((ctx->frame_count / 25) % 2 == 0) {
+#ifdef PLATFORM_WEB
+        platform_draw_text(80, 150, "A: \xEB\x8B\xA4\xEC\x9D\x8C  B: \xEA\xB1\xB4\xEB\x84\x88\xEB\x9B\xB0\xEA\xB8\xB0", 0x5294);
+        /* A: 다음  B: 건너뛰기 */
+#else
+        platform_draw_text(76, 150, "A: Next   B: Skip", 0x5294);
+#endif
+    }
+}
+
 /* ── Title Screen ──────────────────────────────────────── */
 void state_title_update(GameContext *ctx) {
     uint16_t keys = platform_keys_pressed();
-    if (keys & KEY_START) {
+    if (keys & (KEY_START | KEY_A)) {
         audio_play_sfx(SFX_CONFIRM);
         audio_set_bgm_for_island(ctx->current_island);
         transition_start(TRANS_FADE_OUT, 20, STATE_WORLD);
@@ -207,28 +317,44 @@ void state_title_render(GameContext *ctx) {
     platform_draw_rect(32, 22, 176, 36, 0x0000);
 
     /* Title text */
-    platform_draw_text(40, 28, "TREASURE  QUEST", 0x03FF); /* yellow */
-    platform_draw_text(48, 44, "Seven Islands", 0x5EF7);   /* light gray */
+#ifdef PLATFORM_WEB
+    platform_draw_text(36, 26, "\xEB\xB3\xB4\xEB\xAC\xBC \xED\x83\x90\xED\x97\x98", 0x03FF);
+    /* 보물 탐험 */
+    platform_draw_text(42, 42, "\xEC\x9D\xBC\xEA\xB3\xB1 \xEC\x84\xAC\xEC\x9D\x98 \xEB\xB9\x84\xEB\xB0\x80", 0x5EF7);
+    /* 일곱 섬의 비밀 */
+#else
+    platform_draw_text(40, 28, "TREASURE  QUEST", 0x03FF);
+    platform_draw_text(48, 44, "Seven Islands", 0x5EF7);
+#endif
 
     /* Decorative treasure icons */
     for (int i = 0; i < 7; i++) {
         int ix = 54 + i * 20;
-        uint16_t ic = (uint16_t)(0x001F + i * 0x0400); /* varying colors */
+        uint16_t ic = (uint16_t)(0x001F + i * 0x0400);
         platform_draw_rect(ix, 68, 8, 8, ic);
         platform_draw_rect(ix + 1, 69, 6, 6, 0x03FF);
     }
 
     /* Menu options */
+#ifdef PLATFORM_WEB
+    platform_draw_text(60, 90, "\xEC\x83\x88\xEB\xA1\x9C\xEC\x9A\xB4 \xEB\xAA\xA8\xED\x97\x98", 0x7FFF);
+    /* 새로운 모험 */
+#else
     platform_draw_text(76, 90, "New Adventure", 0x7FFF);
-    platform_draw_text(68, 106, "- PRESS START -", 0x5294);
+#endif
 
-    /* Blink "PRESS START" */
+    /* Blink start prompt */
     if ((ctx->frame_count / 30) % 2 == 0) {
+#ifdef PLATFORM_WEB
+        platform_draw_text(46, 106, "- START \xEB\x98\x90\xEB\x8A\x94 A \xEB\xB2\x84\xED\x8A\xBC -", 0x7FFF);
+        /* - START 또는 A 버튼 - */
+#else
         platform_draw_text(68, 106, "- PRESS START -", 0x7FFF);
+#endif
     }
 
     /* Credits */
-    platform_draw_text(56, 132, "Sprint 20 Edition", 0x294A);
+    platform_draw_text(56, 132, "Sprint 21 Edition", 0x294A);
 }
 
 /* ── World / Overworld ─────────────────────────────────── */
