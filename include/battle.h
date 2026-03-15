@@ -40,6 +40,25 @@ typedef enum {
     ELEM_THUNDER,
 } Element;
 
+/* ── Enemy AI Types ──────────────────────────────────── */
+typedef enum {
+    AI_AGGRESSIVE = 0,  /* always physical attack */
+    AI_DEFENSIVE  = 1,  /* defend when HP low, counter next turn */
+    AI_CASTER     = 2,  /* elemental magic attack, self-heal when low */
+} EnemyAIType;
+
+/* ── Enemy AI Action (returned by pure AI functions) ── */
+typedef enum {
+    AI_ACT_ATTACK,      /* normal physical attack */
+    AI_ACT_DEFEND,      /* defend (take 50% damage, counter next turn) */
+    AI_ACT_COUNTER,     /* counter-attack at 1.5x damage */
+    AI_ACT_CAST,        /* elemental magic attack */
+    AI_ACT_HEAL,        /* self-heal (15% max HP) */
+    /* Boss-specific actions */
+    AI_ACT_BOSS_SPECIAL,  /* boss special attack (Fire Breath, Tentacle, etc.) */
+    AI_ACT_BOSS_HEAL,     /* boss self-heal (Kraken Phase 2) */
+} EnemyAIAction;
+
 /* ── Enemy Data ───────────────────────────────────────── */
 typedef struct {
     char    name[MAX_NAME_LEN];
@@ -55,6 +74,7 @@ typedef struct {
     uint8_t resistance;  /* Element enum — takes 0.5x damage from this */
     int8_t  drop_item_id;  /* item id to drop, -1 = no drop */
     uint8_t drop_chance;   /* drop probability 0-100 percent */
+    uint8_t ai_type;       /* EnemyAIType — AI behavior pattern */
 } EnemyData;
 
 /* ── Spell Data ───────────────────────────────────────── */
@@ -87,6 +107,9 @@ typedef struct {
     uint8_t       island;         /* current island for scaling */
     uint8_t       party_turn_idx; /* which party member is acting in PARTY_TURN */
     bool          berserk_active; /* Drake's berserk: next turn DEF=0 */
+    bool          enemy_defending; /* true if enemy is defending this turn */
+    bool          enemy_counter;   /* true if enemy will counter next turn */
+    bool          boss_phase2;     /* true if boss HP <= 50% */
 } BattleContext;
 
 /* ── Functions ────────────────────────────────────────── */
@@ -98,5 +121,11 @@ int  battle_calc_spell_damage(int power, int caster_atk, int target_def,
                               uint8_t spell_element, uint8_t enemy_weakness,
                               uint8_t enemy_resistance, bool *out_super, bool *out_resist);
 int  battle_get_random_enemy_for_island(int island_id, uint32_t rng);
+
+/* ── AI Functions (pure, testable) ────────────────────── */
+EnemyAIAction enemy_ai_choose_action(uint8_t ai_type, int16_t hp, int16_t max_hp,
+                                      uint8_t turn_count, bool is_countering, uint32_t rng);
+EnemyAIAction boss_ai_choose_action(uint8_t sprite_id, int16_t hp, int16_t max_hp,
+                                     uint8_t turn_count, uint32_t rng);
 
 #endif /* BATTLE_H */

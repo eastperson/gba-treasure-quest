@@ -21,30 +21,27 @@ static uint32_t battle_rand(void) {
 #define ENEMY_COUNT 14
 
 static const EnemyData enemy_table[ENEMY_COUNT] = {
-    /* name             hp  max  atk def spd  exp  gold sprite  weak        resist       drop_id  drop% */
+    /* name             hp  max  atk def spd  exp  gold sprite  weak        resist       drop_id  drop%  ai_type */
     /* Island 0-1 enemies (indices 0-1) — generic */
-    { "Slime",          10, 10,   4,  2,  3,   5,   5,  16, ELEM_NONE,    ELEM_NONE,     0, 30 },  /* Potion 30% */
-    { "Goblin",         18, 18,   7,  3,  5,  12,  12,  17, ELEM_NONE,    ELEM_NONE,     0, 30 },  /* Herb(Potion) 30% */
+    { "Slime",          10, 10,   4,  2,  3,   5,   5,  16, ELEM_NONE,    ELEM_NONE,     0, 30, AI_AGGRESSIVE },
+    { "Goblin",         18, 18,   7,  3,  5,  12,  12,  17, ELEM_NONE,    ELEM_NONE,     0, 30, AI_AGGRESSIVE },
     /* Island 2-3 enemies (indices 2-3) — fire-themed */
-    { "Scorpion",       22, 22,  10,  4,  6,  18,  16,  18, ELEM_ICE,     ELEM_FIRE,     3, 20 },  /* Antidote 20% */
-    { "Fire Bat",       16, 16,  12,  3,  9,  15,  14,  19, ELEM_ICE,     ELEM_FIRE,     2, 20 },  /* Ether 20% */
+    { "Scorpion",       22, 22,  10,  4,  6,  18,  16,  18, ELEM_ICE,     ELEM_FIRE,     3, 20, AI_DEFENSIVE },
+    { "Fire Bat",       16, 16,  12,  3,  9,  15,  14,  19, ELEM_ICE,     ELEM_FIRE,     2, 20, AI_CASTER },
     /* Island 4-5 enemies (indices 4-5) — ice-themed / water */
-    { "Ice Golem",      35, 35,  13,  8,  3,  25,  24,  20, ELEM_FIRE,    ELEM_ICE,      1, 15 },  /* Hi-Potion 15% */
-    { "Wraith",         28, 28,  15,  5,  7,  22,  20,  21, ELEM_THUNDER, ELEM_ICE,      2, 20 },  /* Ether 20% */
+    { "Ice Golem",      35, 35,  13,  8,  3,  25,  24,  20, ELEM_FIRE,    ELEM_ICE,      1, 15, AI_DEFENSIVE },
+    { "Wraith",         28, 28,  15,  5,  7,  22,  20,  21, ELEM_THUNDER, ELEM_ICE,      2, 20, AI_CASTER },
     /* Island 6 enemy (index 6) — mechanical/thunder */
-    { "Temple Guard",   40, 40,  16, 10,  5,  30,  32,  22, ELEM_FIRE,    ELEM_THUNDER,  5, 10 },  /* Key 10% */
-    /* Bosses (indices 7-9) */
-    /* Island 3 boss — fire dragon: weak to Ice, resists Fire */
-    { "Fire Dragon",    80, 80,  18, 10,  6,  50,  50,  23, ELEM_ICE,     ELEM_FIRE,     4, 50 },  /* Elixir(Bomb) 50% */
-    /* Island 5 boss — water/kraken: weak to Thunder, resists Ice */
-    { "Kraken",        100,100,  20, 12,  5,  70,  65,  24, ELEM_THUNDER, ELEM_ICE,      1, 50 },  /* Hi-Potion 50% */
-    /* Island 6 boss — sky/thunder: weak to Ice, resists Thunder */
-    { "Sky Lord",      150,150,  25, 15,  7, 100, 100,  25, ELEM_ICE,     ELEM_THUNDER,  5, 40 },  /* Key 40% */
+    { "Temple Guard",   40, 40,  16, 10,  5,  30,  32,  22, ELEM_FIRE,    ELEM_THUNDER,  5, 10, AI_DEFENSIVE },
+    /* Bosses (indices 7-9) — boss AI handled separately */
+    { "Fire Dragon",    80, 80,  18, 10,  6,  50,  50,  23, ELEM_ICE,     ELEM_FIRE,     4, 50, AI_AGGRESSIVE },
+    { "Kraken",        100,100,  20, 12,  5,  70,  65,  24, ELEM_THUNDER, ELEM_ICE,      1, 50, AI_AGGRESSIVE },
+    { "Sky Lord",      150,150,  25, 15,  7, 100, 100,  25, ELEM_ICE,     ELEM_THUNDER,  5, 40, AI_AGGRESSIVE },
     /* Legacy enemies kept for compatibility (indices 10-13) */
-    { "Wolf",           15, 15,   9,  2,  8,  10,   8,  18, ELEM_NONE,    ELEM_NONE,     0, 20 },  /* Potion 20% */
-    { "Skeleton",       25, 25,   8,  6,  4,  18,  20,  19, ELEM_NONE,    ELEM_NONE,     0, 20 },  /* Potion 20% */
-    { "Boss Pirate",    60, 60,  12,  8,  6,  50,  50,  20, ELEM_NONE,    ELEM_NONE,     1, 40 },  /* Hi-Potion 40% */
-    { "Imp",            12, 12,   5,  2,  7,   7,   7,  16, ELEM_FIRE,    ELEM_NONE,    -1,  0 },  /* no drop */
+    { "Wolf",           15, 15,   9,  2,  8,  10,   8,  18, ELEM_NONE,    ELEM_NONE,     0, 20, AI_AGGRESSIVE },
+    { "Skeleton",       25, 25,   8,  6,  4,  18,  20,  19, ELEM_NONE,    ELEM_NONE,     0, 20, AI_DEFENSIVE },
+    { "Boss Pirate",    60, 60,  12,  8,  6,  50,  50,  20, ELEM_NONE,    ELEM_NONE,     1, 40, AI_AGGRESSIVE },
+    { "Imp",            12, 12,   5,  2,  7,   7,   7,  16, ELEM_FIRE,    ELEM_NONE,    -1,  0, AI_CASTER },
 };
 
 /* ── Command names for menu ───────────────────────────── */
@@ -115,6 +112,91 @@ int battle_calc_spell_damage(int power, int caster_atk, int target_def,
     return dmg;
 }
 
+/* ── Enemy AI Decision (pure function, testable) ─────── */
+EnemyAIAction enemy_ai_choose_action(uint8_t ai_type, int16_t hp, int16_t max_hp,
+                                      uint8_t turn_count, bool is_countering, uint32_t rng) {
+    (void)turn_count;
+    int hp_pct = (max_hp > 0) ? (hp * 100) / max_hp : 100;
+
+    /* If enemy was defending last turn, counter-attack this turn */
+    if (is_countering) {
+        return AI_ACT_COUNTER;
+    }
+
+    switch ((EnemyAIType)ai_type) {
+    case AI_AGGRESSIVE:
+        return AI_ACT_ATTACK;
+
+    case AI_DEFENSIVE:
+        /* HP <= 30%: defend (sets up counter next turn) */
+        if (hp_pct <= 30) {
+            return AI_ACT_DEFEND;
+        }
+        return AI_ACT_ATTACK;
+
+    case AI_CASTER:
+        /* HP <= 40%: self-heal */
+        if (hp_pct <= 40) {
+            return AI_ACT_HEAL;
+        }
+        /* Otherwise: 60% cast, 40% physical (add variety) */
+        if ((rng % 100) < 60) {
+            return AI_ACT_CAST;
+        }
+        return AI_ACT_ATTACK;
+
+    default:
+        return AI_ACT_ATTACK;
+    }
+}
+
+/* ── Boss AI Decision (pure function, testable) ──────── */
+EnemyAIAction boss_ai_choose_action(uint8_t sprite_id, int16_t hp, int16_t max_hp,
+                                     uint8_t turn_count, uint32_t rng) {
+    (void)rng;
+    bool phase2 = (max_hp > 0) && (hp * 100 / max_hp <= 50);
+    int special_interval;
+
+    bool is_fire_dragon = (sprite_id == 23);
+    bool is_kraken      = (sprite_id == 24);
+    bool is_sky_lord    = (sprite_id == 25);
+
+    if (is_fire_dragon) {
+        special_interval = phase2 ? 2 : 3;  /* Phase 2: every 2 turns */
+        if ((turn_count % special_interval) == 0 && turn_count > 0) {
+            return AI_ACT_BOSS_SPECIAL;
+        }
+        return AI_ACT_ATTACK;
+    }
+
+    if (is_kraken) {
+        special_interval = phase2 ? 2 : 4;  /* Phase 2: every 2 turns */
+        if ((turn_count % special_interval) == 0 && turn_count > 0) {
+            return AI_ACT_BOSS_SPECIAL;
+        }
+        /* Phase 2: heal on odd turns when not using special */
+        if (phase2 && (turn_count % 2 == 1)) {
+            return AI_ACT_BOSS_HEAL;
+        }
+        return AI_ACT_ATTACK;
+    }
+
+    if (is_sky_lord) {
+        if (phase2) {
+            /* Phase 2: Thunder Storm every turn */
+            return AI_ACT_BOSS_SPECIAL;
+        }
+        /* Phase 1: every other turn */
+        if ((turn_count % 2 == 0) && turn_count > 0) {
+            return AI_ACT_BOSS_SPECIAL;
+        }
+        return AI_ACT_ATTACK;
+    }
+
+    /* Non-elemental bosses (Boss Pirate etc) */
+    return AI_ACT_ATTACK;
+}
+
 /* ── Initialization ───────────────────────────────────── */
 void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *inv, Party *party, uint8_t island) {
     (void)hero;
@@ -147,6 +229,9 @@ void battle_init(BattleContext *bc, Character *hero, int enemy_id, Inventory *in
     bc->island = island;
     bc->party_turn_idx = 0;
     bc->berserk_active = false;
+    bc->enemy_defending = false;
+    bc->enemy_counter = false;
+    bc->boss_phase2 = false;
 
     snprintf(bc->message, sizeof(bc->message),
              "A %s appeared!", bc->enemy.name);
@@ -482,6 +567,12 @@ void battle_update(BattleContext *bc, Character *hero) {
         if (bc->turn_timer == 0) {
             int dmg = battle_calc_damage(hero->atk, bc->enemy.def);
 
+            /* Enemy defending: take 50% damage */
+            if (bc->enemy_defending) {
+                dmg = dmg / 2;
+                if (dmg < 1) dmg = 1;
+            }
+
             /* Critical hit: 5% base + LUK/256 */
             {
                 int crit_chance = 5 + (hero->luk * 100) / 256;
@@ -569,10 +660,16 @@ void battle_update(BattleContext *bc, Character *hero) {
         if (bc->turn_timer == 0) {
             bc->boss_turn_count++;
 
-            /* Enemy flee check: enemies with <20% HP have 30% chance to flee */
-            /* (bosses don't flee — enemy ids 7-9) */
+            /* Check boss phase transition */
             {
                 bool is_boss = (bc->enemy.sprite_id >= 23 && bc->enemy.sprite_id <= 25);
+                if (is_boss && bc->enemy.max_hp > 0 &&
+                    (bc->enemy.hp * 100 / bc->enemy.max_hp) <= 50) {
+                    bc->boss_phase2 = true;
+                }
+
+                /* Enemy flee check: enemies with <20% HP have 30% chance to flee */
+                /* (bosses don't flee) */
                 int hp_pct = (bc->enemy.max_hp > 0)
                     ? (bc->enemy.hp * 100) / bc->enemy.max_hp : 100;
                 if (!is_boss && hp_pct < 20) {
@@ -581,11 +678,9 @@ void battle_update(BattleContext *bc, Character *hero) {
                         snprintf(bc->message, sizeof(bc->message),
                                  "%s fled!", bc->enemy.name);
                         bc->enemy.hp = 0;
-                        /* No rewards for fled enemy */
                         bc->enemy.exp_reward = 0;
                         bc->enemy.gold_reward = 0;
                         bc->turn_timer = 1; /* skip damage */
-                        /* Fall through to win check below */
                     }
                 }
             }
@@ -597,56 +692,169 @@ void battle_update(BattleContext *bc, Character *hero) {
                     hero_def = 0;
                     bc->berserk_active = false;
                 }
-                int dmg = battle_calc_damage(bc->enemy.atk, hero_def);
 
-                /* Boss AI special attacks */
-                bool is_fire_dragon = (bc->enemy.sprite_id == 23);
-                bool is_kraken = (bc->enemy.sprite_id == 24);
-                bool is_sky_lord = (bc->enemy.sprite_id == 25);
+                bool is_boss = (bc->enemy.sprite_id >= 23 && bc->enemy.sprite_id <= 25);
+                EnemyAIAction action;
+                uint32_t rng = battle_rand();
 
-                if (is_fire_dragon && (bc->boss_turn_count % 3 == 0)) {
-                    /* Fire Breath: 2x damage every 3rd turn */
-                    dmg = battle_calc_damage(bc->enemy.atk * 2, hero_def);
-                    snprintf(bc->message, sizeof(bc->message),
-                             "Fire Breath! %d damage!", dmg);
-                } else if (is_kraken && (bc->boss_turn_count % 4 == 0)) {
-                    /* Tentacle Grab: stun hero for 1 turn + normal damage */
-                    bc->hero_stunned = true;
-                    snprintf(bc->message, sizeof(bc->message),
-                             "Tentacle Grab! %d dmg! Stunned!", dmg);
-                } else if (is_sky_lord && (bc->boss_turn_count % 2 == 0)) {
-                    /* Thunder Storm: hits all party (deal damage to hero + party) */
-                    dmg = battle_calc_damage(bc->enemy.atk, hero_def / 2);
-                    /* Damage party members too */
-                    if (bc->party) {
-                        for (int pi = 1; pi < bc->party->count; pi++) {
-                            Character *m = &bc->party->members[pi];
-                            int pdmg = battle_calc_damage(bc->enemy.atk, m->def / 2);
-                            if (bc->player_defending) pdmg /= 2;
-                            if (pdmg < 1) pdmg = 1;
-                            m->hp -= (int16_t)pdmg;
-                            if (m->hp < 0) m->hp = 0;
-                        }
-                    }
-                    snprintf(bc->message, sizeof(bc->message),
-                             "Thunder Storm! %d to all!", dmg);
+                if (is_boss) {
+                    action = boss_ai_choose_action(bc->enemy.sprite_id,
+                                bc->enemy.hp, bc->enemy.max_hp,
+                                bc->boss_turn_count, rng);
                 } else {
+                    action = enemy_ai_choose_action(bc->enemy.ai_type,
+                                bc->enemy.hp, bc->enemy.max_hp,
+                                bc->boss_turn_count, bc->enemy_counter, rng);
+                }
+
+                /* Clear counter flag after reading it */
+                bc->enemy_counter = false;
+                bc->enemy_defending = false;
+
+                int dmg;
+                int enemy_atk = bc->enemy.atk;
+                /* Boss Phase 2: 1.3x attack power */
+                if (bc->boss_phase2) {
+                    enemy_atk = (enemy_atk * 13) / 10;
+                }
+
+                switch (action) {
+                case AI_ACT_ATTACK:
+                    dmg = battle_calc_damage(enemy_atk, hero_def);
                     snprintf(bc->message, sizeof(bc->message),
                              "%s attacks for %d!", bc->enemy.name, dmg);
-                }
+                    break;
 
-                if (bc->player_defending) {
-                    dmg = dmg * 35 / 100;  /* 65% damage reduction */
+                case AI_ACT_DEFEND:
+                    /* Enemy defends: take 50% damage until next turn, then counter */
+                    bc->enemy_defending = true;
+                    bc->enemy_counter = true;  /* will counter next turn */
+                    dmg = 0;
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s braces for impact!", bc->enemy.name);
+                    break;
+
+                case AI_ACT_COUNTER:
+                    /* Counter-attack at 1.5x damage */
+                    dmg = battle_calc_damage((enemy_atk * 3) / 2, hero_def);
+                    fx_spawn(FX_HIT_FLASH, 0, 0, 0, 6);
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s counters! %d damage!", bc->enemy.name, dmg);
+                    break;
+
+                case AI_ACT_CAST: {
+                    /* Elemental magic attack using enemy's resistance element */
+                    uint8_t cast_elem = bc->enemy.resistance;
+                    if (cast_elem == ELEM_NONE) cast_elem = ELEM_FIRE; /* fallback */
+                    int spell_power = enemy_atk + 5;
+                    dmg = spell_power - hero_def / 3;
                     if (dmg < 1) dmg = 1;
+                    int variance = (int)(battle_rand() % 5) - 2;
+                    dmg += variance;
+                    if (dmg < 1) dmg = 1;
+                    const char *elem_name = "magic";
+                    if (cast_elem == ELEM_FIRE) elem_name = "Fire";
+                    else if (cast_elem == ELEM_ICE) elem_name = "Ice";
+                    else if (cast_elem == ELEM_THUNDER) elem_name = "Thunder";
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s casts %s! %d damage!", bc->enemy.name, elem_name, dmg);
+                    break;
                 }
-                hero->hp -= (int16_t)dmg;
-                bc->damage_display = (int16_t)dmg;
 
-                /* Spawn damage number at hero stats area */
-                fx_spawn(FX_DAMAGE_NUM, 40, 100, dmg, 30);
+                case AI_ACT_HEAL: {
+                    /* Self-heal: 15% of max HP */
+                    int heal = (bc->enemy.max_hp * 15) / 100;
+                    if (heal < 1) heal = 1;
+                    bc->enemy.hp += (int16_t)heal;
+                    if (bc->enemy.hp > bc->enemy.max_hp)
+                        bc->enemy.hp = bc->enemy.max_hp;
+                    dmg = 0;
+                    fx_spawn(FX_HEAL, 116, 10, heal, 24);
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s heals %d HP!", bc->enemy.name, heal);
+                    break;
+                }
 
-                if (hero->hp <= 0) {
-                    hero->hp = 0;
+                case AI_ACT_BOSS_SPECIAL: {
+                    bool is_fire_dragon = (bc->enemy.sprite_id == 23);
+                    bool is_kraken = (bc->enemy.sprite_id == 24);
+                    /* bool is_sky_lord = (bc->enemy.sprite_id == 25); */
+
+                    if (is_fire_dragon) {
+                        dmg = battle_calc_damage(enemy_atk * 2, hero_def);
+                        snprintf(bc->message, sizeof(bc->message),
+                                 "Fire Breath! %d damage!", dmg);
+                    } else if (is_kraken) {
+                        dmg = battle_calc_damage(enemy_atk, hero_def);
+                        bc->hero_stunned = true;
+                        snprintf(bc->message, sizeof(bc->message),
+                                 "Tentacle Grab! %d dmg! Stunned!", dmg);
+                    } else {
+                        /* Sky Lord: Thunder Storm hits all */
+                        dmg = battle_calc_damage(enemy_atk, hero_def / 2);
+                        if (bc->party) {
+                            for (int pi = 1; pi < bc->party->count; pi++) {
+                                Character *m = &bc->party->members[pi];
+                                int pdmg = battle_calc_damage(enemy_atk, m->def / 2);
+                                if (bc->player_defending) pdmg /= 2;
+                                if (pdmg < 1) pdmg = 1;
+                                m->hp -= (int16_t)pdmg;
+                                if (m->hp < 0) m->hp = 0;
+                            }
+                        }
+                        /* Phase 2: Sky Lord also stuns */
+                        if (bc->boss_phase2) {
+                            int stun_roll = (int)(battle_rand() % 100);
+                            if (stun_roll < 40) {
+                                bc->hero_stunned = true;
+                                snprintf(bc->message, sizeof(bc->message),
+                                         "Thunder Storm! %d to all! Stunned!", dmg);
+                            } else {
+                                snprintf(bc->message, sizeof(bc->message),
+                                         "Thunder Storm! %d to all!", dmg);
+                            }
+                        } else {
+                            snprintf(bc->message, sizeof(bc->message),
+                                     "Thunder Storm! %d to all!", dmg);
+                        }
+                    }
+                    break;
+                }
+
+                case AI_ACT_BOSS_HEAL: {
+                    /* Kraken Phase 2 self-heal */
+                    int heal = 10;
+                    bc->enemy.hp += (int16_t)heal;
+                    if (bc->enemy.hp > bc->enemy.max_hp)
+                        bc->enemy.hp = bc->enemy.max_hp;
+                    dmg = 0;
+                    fx_spawn(FX_HEAL, 116, 10, heal, 24);
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s regenerates %d HP!", bc->enemy.name, heal);
+                    break;
+                }
+
+                default:
+                    dmg = battle_calc_damage(enemy_atk, hero_def);
+                    snprintf(bc->message, sizeof(bc->message),
+                             "%s attacks for %d!", bc->enemy.name, dmg);
+                    break;
+                }
+
+                /* Apply defend reduction and deal damage to hero */
+                if (dmg > 0) {
+                    if (bc->player_defending) {
+                        dmg = dmg * 35 / 100;  /* 65% damage reduction */
+                        if (dmg < 1) dmg = 1;
+                    }
+                    hero->hp -= (int16_t)dmg;
+                    bc->damage_display = (int16_t)dmg;
+                    fx_spawn(FX_DAMAGE_NUM, 40, 100, dmg, 30);
+                    if (hero->hp <= 0) {
+                        hero->hp = 0;
+                    }
+                } else {
+                    bc->damage_display = 0;
                 }
             }
         }

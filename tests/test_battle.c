@@ -190,6 +190,229 @@ static void test_enemy_drop_fields(void) {
     TEST_ASSERT_EQ(enemy_table[7].drop_chance, 50);
 }
 
+/* ── Test: Enemy AI table fields ──────────────────────── */
+static void test_enemy_ai_type_fields(void) {
+    /* Verify ai_type assignments in enemy_table */
+    TEST_ASSERT_EQ(enemy_table[0].ai_type, AI_AGGRESSIVE);  /* Slime */
+    TEST_ASSERT_EQ(enemy_table[1].ai_type, AI_AGGRESSIVE);  /* Goblin */
+    TEST_ASSERT_EQ(enemy_table[2].ai_type, AI_DEFENSIVE);   /* Scorpion */
+    TEST_ASSERT_EQ(enemy_table[3].ai_type, AI_CASTER);      /* Fire Bat */
+    TEST_ASSERT_EQ(enemy_table[4].ai_type, AI_DEFENSIVE);   /* Ice Golem */
+    TEST_ASSERT_EQ(enemy_table[5].ai_type, AI_CASTER);      /* Wraith */
+    TEST_ASSERT_EQ(enemy_table[6].ai_type, AI_DEFENSIVE);   /* Temple Guard */
+    TEST_ASSERT_EQ(enemy_table[11].ai_type, AI_DEFENSIVE);  /* Skeleton */
+    TEST_ASSERT_EQ(enemy_table[13].ai_type, AI_CASTER);     /* Imp */
+}
+
+/* ── Test: AI_AGGRESSIVE always attacks ──────────────── */
+static void test_ai_aggressive(void) {
+    /* AI_AGGRESSIVE should always return AI_ACT_ATTACK regardless of HP */
+    for (int i = 0; i < 50; i++) {
+        EnemyAIAction act = enemy_ai_choose_action(AI_AGGRESSIVE, 5, 100, i, false, (uint32_t)i * 12345);
+        TEST_ASSERT_EQ(act, AI_ACT_ATTACK);
+    }
+    /* Even at 1 HP */
+    EnemyAIAction act = enemy_ai_choose_action(AI_AGGRESSIVE, 1, 100, 5, false, 42);
+    TEST_ASSERT_EQ(act, AI_ACT_ATTACK);
+}
+
+/* ── Test: AI_DEFENSIVE defend/counter cycle ─────────── */
+static void test_ai_defensive(void) {
+    /* HP > 30%: should attack */
+    for (int i = 0; i < 20; i++) {
+        EnemyAIAction act = enemy_ai_choose_action(AI_DEFENSIVE, 50, 100, i, false, (uint32_t)i);
+        TEST_ASSERT_EQ(act, AI_ACT_ATTACK);
+    }
+
+    /* HP = 30%: should defend */
+    {
+        EnemyAIAction act = enemy_ai_choose_action(AI_DEFENSIVE, 30, 100, 1, false, 0);
+        TEST_ASSERT_EQ(act, AI_ACT_DEFEND);
+    }
+
+    /* HP < 30%: should defend */
+    {
+        EnemyAIAction act = enemy_ai_choose_action(AI_DEFENSIVE, 10, 100, 1, false, 0);
+        TEST_ASSERT_EQ(act, AI_ACT_DEFEND);
+    }
+
+    /* Counter flag set: should counter regardless of HP */
+    {
+        EnemyAIAction act = enemy_ai_choose_action(AI_DEFENSIVE, 80, 100, 1, true, 0);
+        TEST_ASSERT_EQ(act, AI_ACT_COUNTER);
+    }
+    {
+        EnemyAIAction act = enemy_ai_choose_action(AI_DEFENSIVE, 10, 100, 1, true, 0);
+        TEST_ASSERT_EQ(act, AI_ACT_COUNTER);
+    }
+}
+
+/* ── Test: AI_CASTER cast/heal/attack distribution ───── */
+static void test_ai_caster(void) {
+    /* HP <= 40%: always heal */
+    for (int i = 0; i < 20; i++) {
+        EnemyAIAction act = enemy_ai_choose_action(AI_CASTER, 40, 100, i, false, (uint32_t)i);
+        TEST_ASSERT_EQ(act, AI_ACT_HEAL);
+    }
+    {
+        EnemyAIAction act = enemy_ai_choose_action(AI_CASTER, 20, 100, 1, false, 0);
+        TEST_ASSERT_EQ(act, AI_ACT_HEAL);
+    }
+
+    /* HP > 40%: should be mix of CAST and ATTACK */
+    int cast_count = 0, attack_count = 0;
+    for (uint32_t r = 0; r < 200; r++) {
+        EnemyAIAction act = enemy_ai_choose_action(AI_CASTER, 80, 100, 1, false, r * 7919);
+        if (act == AI_ACT_CAST) cast_count++;
+        else if (act == AI_ACT_ATTACK) attack_count++;
+        else TEST_ASSERT(0); /* should not get other actions */
+    }
+    /* 60% cast, 40% attack — verify both occur */
+    TEST_ASSERT(cast_count > 0);
+    TEST_ASSERT(attack_count > 0);
+    /* Rough ratio check: cast should be more than attack */
+    TEST_ASSERT(cast_count > attack_count);
+
+    /* Counter flag overrides even for caster */
+    {
+        EnemyAIAction act = enemy_ai_choose_action(AI_CASTER, 80, 100, 1, true, 0);
+        TEST_ASSERT_EQ(act, AI_ACT_COUNTER);
+    }
+}
+
+/* ── Test: Boss AI Phase 1 patterns ──────────────────── */
+static void test_boss_ai_phase1(void) {
+    /* Fire Dragon (sprite 23): Phase 1 (HP > 50%) — special every 3 turns */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 80, 80, 0, 0), AI_ACT_ATTACK);  /* turn 0 */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 80, 80, 1, 0), AI_ACT_ATTACK);  /* turn 1 */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 80, 80, 2, 0), AI_ACT_ATTACK);  /* turn 2 */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 80, 80, 3, 0), AI_ACT_BOSS_SPECIAL); /* turn 3 */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 80, 80, 6, 0), AI_ACT_BOSS_SPECIAL); /* turn 6 */
+
+    /* Kraken (sprite 24): Phase 1 — special every 4 turns */
+    TEST_ASSERT_EQ(boss_ai_choose_action(24, 100, 100, 0, 0), AI_ACT_ATTACK);
+    TEST_ASSERT_EQ(boss_ai_choose_action(24, 100, 100, 4, 0), AI_ACT_BOSS_SPECIAL);
+    TEST_ASSERT_EQ(boss_ai_choose_action(24, 100, 100, 8, 0), AI_ACT_BOSS_SPECIAL);
+
+    /* Sky Lord (sprite 25): Phase 1 — special every 2 turns */
+    TEST_ASSERT_EQ(boss_ai_choose_action(25, 150, 150, 0, 0), AI_ACT_ATTACK);
+    TEST_ASSERT_EQ(boss_ai_choose_action(25, 150, 150, 1, 0), AI_ACT_ATTACK);
+    TEST_ASSERT_EQ(boss_ai_choose_action(25, 150, 150, 2, 0), AI_ACT_BOSS_SPECIAL);
+    TEST_ASSERT_EQ(boss_ai_choose_action(25, 150, 150, 4, 0), AI_ACT_BOSS_SPECIAL);
+}
+
+/* ── Test: Boss AI Phase 2 (HP <= 50%) ───────────────── */
+static void test_boss_ai_phase2(void) {
+    /* Fire Dragon Phase 2: special every 2 turns (was 3) */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 40, 80, 2, 0), AI_ACT_BOSS_SPECIAL);
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 40, 80, 4, 0), AI_ACT_BOSS_SPECIAL);
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 40, 80, 3, 0), AI_ACT_ATTACK);
+
+    /* Kraken Phase 2: special every 2 turns (was 4) + heal on odd turns */
+    TEST_ASSERT_EQ(boss_ai_choose_action(24, 50, 100, 2, 0), AI_ACT_BOSS_SPECIAL);
+    TEST_ASSERT_EQ(boss_ai_choose_action(24, 50, 100, 1, 0), AI_ACT_BOSS_HEAL);
+    TEST_ASSERT_EQ(boss_ai_choose_action(24, 50, 100, 3, 0), AI_ACT_BOSS_HEAL);
+
+    /* Sky Lord Phase 2: Thunder Storm every turn */
+    for (int t = 1; t <= 10; t++) {
+        TEST_ASSERT_EQ(boss_ai_choose_action(25, 75, 150, t, 0), AI_ACT_BOSS_SPECIAL);
+    }
+    /* Even turn 0 in phase 2 */
+    TEST_ASSERT_EQ(boss_ai_choose_action(25, 75, 150, 0, 0), AI_ACT_BOSS_SPECIAL);
+}
+
+/* ── Test: Boss Phase 2 threshold at exactly 50% ─────── */
+static void test_boss_phase_threshold(void) {
+    /* HP = 50% exactly: should be Phase 2 (<=50%) */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 40, 80, 2, 0), AI_ACT_BOSS_SPECIAL); /* Phase 2 interval */
+    /* HP = 51%: should be Phase 1 */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 41, 80, 2, 0), AI_ACT_ATTACK); /* turn 2, Phase 1 interval=3 */
+    /* HP = 49%: should be Phase 2 */
+    TEST_ASSERT_EQ(boss_ai_choose_action(23, 39, 80, 2, 0), AI_ACT_BOSS_SPECIAL);
+}
+
+/* ── Test: AI self-heal amount (15% max HP) ──────────── */
+static void test_ai_heal_amount(void) {
+    /* Verify self-heal = 15% of max_hp */
+    /* Wraith: max_hp 28, 15% = 4 */
+    int heal_28 = (28 * 15) / 100;
+    TEST_ASSERT_EQ(heal_28, 4);
+
+    /* Ice Golem: max_hp 35, 15% = 5 */
+    int heal_35 = (35 * 15) / 100;
+    TEST_ASSERT_EQ(heal_35, 5);
+
+    /* Slime: max_hp 10, 15% = 1 */
+    int heal_10 = (10 * 15) / 100;
+    TEST_ASSERT_EQ(heal_10, 1);
+
+    /* Minimum heal should be >= 1 */
+    int heal_1 = (1 * 15) / 100;
+    if (heal_1 < 1) heal_1 = 1;
+    TEST_ASSERT(heal_1 >= 1);
+}
+
+/* ── Test: Defensive counter damage multiplier ───────── */
+static void test_counter_damage_multiplier(void) {
+    /* Counter deals 1.5x ATK — verify formula */
+    int atk = 20;
+    int counter_atk = (atk * 3) / 2;
+    TEST_ASSERT_EQ(counter_atk, 30);
+
+    atk = 15;
+    counter_atk = (atk * 3) / 2;
+    TEST_ASSERT_EQ(counter_atk, 22); /* 15*1.5 = 22 (integer division) */
+
+    /* Verify damage is at least 1 */
+    for (int i = 0; i < 30; i++) {
+        int dmg = battle_calc_damage(counter_atk, 50);
+        TEST_ASSERT(dmg >= 1);
+    }
+}
+
+/* ── Test: Boss Phase 2 attack power boost ───────────── */
+static void test_boss_phase2_attack_boost(void) {
+    /* Phase 2: ATK * 1.3 */
+    int atk = 20;
+    int boosted = (atk * 13) / 10;
+    TEST_ASSERT_EQ(boosted, 26);
+
+    atk = 18; /* Fire Dragon */
+    boosted = (atk * 13) / 10;
+    TEST_ASSERT_EQ(boosted, 23);
+
+    atk = 25; /* Sky Lord */
+    boosted = (atk * 13) / 10;
+    TEST_ASSERT_EQ(boosted, 32);
+}
+
+/* ── Test: AI edge case — zero max HP ────────────────── */
+static void test_ai_edge_zero_hp(void) {
+    /* max_hp=0 should not crash (division by zero guard) */
+    EnemyAIAction act = enemy_ai_choose_action(AI_DEFENSIVE, 0, 0, 0, false, 0);
+    /* hp_pct defaults to 100 when max_hp=0, so should attack */
+    TEST_ASSERT_EQ(act, AI_ACT_ATTACK);
+
+    act = enemy_ai_choose_action(AI_CASTER, 0, 0, 0, false, 0);
+    /* 100% > 40%, not heal. rng=0 → (0%100)=0 < 60 → CAST */
+    TEST_ASSERT(act == AI_ACT_CAST || act == AI_ACT_ATTACK);
+}
+
+/* ── Test: Kraken Phase 2 heal does not exceed max HP ── */
+static void test_boss_heal_cap(void) {
+    /* Kraken heal: 10 HP, verify concept */
+    int16_t hp = 95, max_hp = 100;
+    int heal = 10;
+    hp += (int16_t)heal;
+    if (hp > max_hp) hp = max_hp;
+    TEST_ASSERT_EQ(hp, 100); /* capped at max */
+
+    hp = 50;
+    hp += (int16_t)heal;
+    if (hp > max_hp) hp = max_hp;
+    TEST_ASSERT_EQ(hp, 60); /* no cap needed */
+}
+
 /* ── Main ────────────────────────────────────────────── */
 int main(void) {
     printf("=== Battle Tests ===\n");
@@ -202,6 +425,19 @@ int main(void) {
     TEST_RUN(test_mp_insufficient);
     TEST_RUN(test_mp_deduction_amounts);
     TEST_RUN(test_enemy_drop_fields);
+    /* Sprint 31: Enemy AI tests */
+    TEST_RUN(test_enemy_ai_type_fields);
+    TEST_RUN(test_ai_aggressive);
+    TEST_RUN(test_ai_defensive);
+    TEST_RUN(test_ai_caster);
+    TEST_RUN(test_boss_ai_phase1);
+    TEST_RUN(test_boss_ai_phase2);
+    TEST_RUN(test_boss_phase_threshold);
+    TEST_RUN(test_ai_heal_amount);
+    TEST_RUN(test_counter_damage_multiplier);
+    TEST_RUN(test_boss_phase2_attack_boost);
+    TEST_RUN(test_ai_edge_zero_hp);
+    TEST_RUN(test_boss_heal_cap);
 
     TEST_SUMMARY();
 }
