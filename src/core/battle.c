@@ -21,30 +21,30 @@ static uint32_t battle_rand(void) {
 #define ENEMY_COUNT 14
 
 static const EnemyData enemy_table[ENEMY_COUNT] = {
-    /* name             hp  max  atk def spd  exp  gold sprite  weak        resist     */
+    /* name             hp  max  atk def spd  exp  gold sprite  weak        resist       drop_id  drop% */
     /* Island 0-1 enemies (indices 0-1) — generic */
-    { "Slime",          10, 10,   4,  2,  3,   5,   3,  16, ELEM_NONE,    ELEM_NONE    },
-    { "Goblin",         18, 18,   7,  3,  5,  12,   8,  17, ELEM_NONE,    ELEM_NONE    },
+    { "Slime",          10, 10,   4,  2,  3,   5,   5,  16, ELEM_NONE,    ELEM_NONE,     0, 30 },  /* Potion 30% */
+    { "Goblin",         18, 18,   7,  3,  5,  12,  12,  17, ELEM_NONE,    ELEM_NONE,     0, 30 },  /* Herb(Potion) 30% */
     /* Island 2-3 enemies (indices 2-3) — fire-themed */
-    { "Scorpion",       22, 22,  10,  4,  6,  18,  12,  18, ELEM_ICE,     ELEM_FIRE    },
-    { "Fire Bat",       16, 16,  12,  3,  9,  15,  10,  19, ELEM_ICE,     ELEM_FIRE    },
+    { "Scorpion",       22, 22,  10,  4,  6,  18,  16,  18, ELEM_ICE,     ELEM_FIRE,     3, 20 },  /* Antidote 20% */
+    { "Fire Bat",       16, 16,  12,  3,  9,  15,  14,  19, ELEM_ICE,     ELEM_FIRE,     2, 20 },  /* Ether 20% */
     /* Island 4-5 enemies (indices 4-5) — ice-themed / water */
-    { "Ice Golem",      35, 35,  13,  8,  3,  25,  18,  20, ELEM_FIRE,    ELEM_ICE     },
-    { "Wraith",         28, 28,  15,  5,  7,  22,  15,  21, ELEM_THUNDER, ELEM_ICE     },
+    { "Ice Golem",      35, 35,  13,  8,  3,  25,  24,  20, ELEM_FIRE,    ELEM_ICE,      1, 15 },  /* Hi-Potion 15% */
+    { "Wraith",         28, 28,  15,  5,  7,  22,  20,  21, ELEM_THUNDER, ELEM_ICE,      2, 20 },  /* Ether 20% */
     /* Island 6 enemy (index 6) — mechanical/thunder */
-    { "Temple Guard",   40, 40,  16, 10,  5,  30,  25,  22, ELEM_FIRE,    ELEM_THUNDER },
+    { "Temple Guard",   40, 40,  16, 10,  5,  30,  32,  22, ELEM_FIRE,    ELEM_THUNDER,  5, 10 },  /* Key 10% */
     /* Bosses (indices 7-9) */
     /* Island 3 boss — fire dragon: weak to Ice, resists Fire */
-    { "Fire Dragon",    80, 80,  18, 10,  6,  50,  40,  23, ELEM_ICE,     ELEM_FIRE    },
+    { "Fire Dragon",    80, 80,  18, 10,  6,  50,  50,  23, ELEM_ICE,     ELEM_FIRE,     4, 50 },  /* Elixir(Bomb) 50% */
     /* Island 5 boss — water/kraken: weak to Thunder, resists Ice */
-    { "Kraken",        100,100,  20, 12,  5,  70,  50,  24, ELEM_THUNDER, ELEM_ICE     },
+    { "Kraken",        100,100,  20, 12,  5,  70,  65,  24, ELEM_THUNDER, ELEM_ICE,      1, 50 },  /* Hi-Potion 50% */
     /* Island 6 boss — sky/thunder: weak to Ice, resists Thunder */
-    { "Sky Lord",      150,150,  25, 15,  7, 100,  80,  25, ELEM_ICE,     ELEM_THUNDER },
+    { "Sky Lord",      150,150,  25, 15,  7, 100, 100,  25, ELEM_ICE,     ELEM_THUNDER,  5, 40 },  /* Key 40% */
     /* Legacy enemies kept for compatibility (indices 10-13) */
-    { "Wolf",           15, 15,   9,  2,  8,  10,   5,  18, ELEM_NONE,    ELEM_NONE    },
-    { "Skeleton",       25, 25,   8,  6,  4,  18,  15,  19, ELEM_NONE,    ELEM_NONE    },
-    { "Boss Pirate",    60, 60,  12,  8,  6,  50,  40,  20, ELEM_NONE,    ELEM_NONE    },
-    { "Imp",            12, 12,   5,  2,  7,   7,   5,  16, ELEM_FIRE,    ELEM_NONE    },
+    { "Wolf",           15, 15,   9,  2,  8,  10,   8,  18, ELEM_NONE,    ELEM_NONE,     0, 20 },  /* Potion 20% */
+    { "Skeleton",       25, 25,   8,  6,  4,  18,  20,  19, ELEM_NONE,    ELEM_NONE,     0, 20 },  /* Potion 20% */
+    { "Boss Pirate",    60, 60,  12,  8,  6,  50,  50,  20, ELEM_NONE,    ELEM_NONE,     1, 40 },  /* Hi-Potion 40% */
+    { "Imp",            12, 12,   5,  2,  7,   7,   7,  16, ELEM_FIRE,    ELEM_NONE,    -1,  0 },  /* no drop */
 };
 
 /* ── Command names for menu ───────────────────────────── */
@@ -74,10 +74,10 @@ static const SkillData g_char_skills[4] = {
 
 /* ── Spell Table ─────────────────────────────────────── */
 static const SpellData g_spells[MAX_SPELLS] = {
-    { "Fire",    5,  15, false, ELEM_FIRE    },  /* 5 MP, 15 power damage */
-    { "Ice",     8,  22, false, ELEM_ICE     },  /* 8 MP, 22 power damage */
-    { "Thunder", 12, 30, false, ELEM_THUNDER },  /* 12 MP, 30 power damage */
-    { "Heal",    4,  20, true,  ELEM_NONE    },  /* 4 MP, heals 20 HP */
+    { "Fireball",  5,  15, false, ELEM_FIRE    },  /* 5 MP, 15 power damage */
+    { "Ice Storm", 6,  22, false, ELEM_ICE     },  /* 6 MP, 22 power damage */
+    { "Thunder",   7,  30, false, ELEM_THUNDER },  /* 7 MP, 30 power damage */
+    { "Heal",      4,  20, true,  ELEM_NONE    },  /* 4 MP, heals 20 HP */
 };
 
 /* ── Damage Calculation ───────────────────────────────── */

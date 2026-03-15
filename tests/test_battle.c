@@ -114,6 +114,82 @@ static void test_minimum_damage(void) {
     }
 }
 
+/* ── Test: MP consumption — enough MP ────────────────── */
+static void test_mp_enough(void) {
+    /* Fireball costs 5 MP — with 10 MP, cast should succeed */
+    Character hero;
+    memset(&hero, 0, sizeof(Character));
+    hero.mp = 10;
+    hero.max_mp = 20;
+
+    /* Simulate spell cast: check MP, deduct */
+    /* g_spells[0] = Fireball, mp_cost = 5 */
+    int spell_idx = 0;
+    /* Access the spell table (included via battle.c) */
+    const SpellData *sp = &g_spells[spell_idx];
+    TEST_ASSERT(hero.mp >= sp->mp_cost);
+    hero.mp -= sp->mp_cost;
+    TEST_ASSERT_EQ(hero.mp, 5);  /* 10 - 5 = 5 */
+}
+
+/* ── Test: MP consumption — insufficient MP ─────────── */
+static void test_mp_insufficient(void) {
+    Character hero;
+    memset(&hero, 0, sizeof(Character));
+    hero.mp = 3;
+    hero.max_mp = 20;
+
+    /* Fireball costs 5 MP — with 3 MP, cast should fail */
+    const SpellData *sp = &g_spells[0];
+    TEST_ASSERT(hero.mp < sp->mp_cost);  /* should not be enough */
+
+    /* MP should remain unchanged (not deducted) */
+    int16_t mp_before = hero.mp;
+    if (hero.mp >= sp->mp_cost) {
+        hero.mp -= sp->mp_cost;  /* should NOT execute */
+    }
+    TEST_ASSERT_EQ(hero.mp, mp_before);
+}
+
+/* ── Test: MP deduction amounts for all spells ──────── */
+static void test_mp_deduction_amounts(void) {
+    /* Verify each spell's MP cost matches spec */
+    TEST_ASSERT_EQ(g_spells[0].mp_cost, 5);   /* Fireball */
+    TEST_ASSERT_EQ(g_spells[1].mp_cost, 6);   /* Ice Storm */
+    TEST_ASSERT_EQ(g_spells[2].mp_cost, 7);   /* Thunder */
+    TEST_ASSERT_EQ(g_spells[3].mp_cost, 4);   /* Heal */
+
+    /* Test sequential casting depletes MP correctly */
+    Character hero;
+    memset(&hero, 0, sizeof(Character));
+    hero.mp = 30;
+    hero.max_mp = 30;
+
+    /* Cast Fireball (5), Ice Storm (6), Thunder (7), Heal (4) = 22 total */
+    for (int i = 0; i < MAX_SPELLS; i++) {
+        TEST_ASSERT(hero.mp >= g_spells[i].mp_cost);
+        hero.mp -= g_spells[i].mp_cost;
+    }
+    TEST_ASSERT_EQ(hero.mp, 30 - 5 - 6 - 7 - 4);  /* 8 remaining */
+}
+
+/* ── Test: Enemy drop fields ────────────────────────── */
+static void test_enemy_drop_fields(void) {
+    /* Verify enemy table has valid drop data */
+    /* enemy_table is static in battle.c — accessible since we #include it */
+    /* Goblin (index 1): item 0, 30% */
+    TEST_ASSERT_EQ(enemy_table[1].drop_item_id, 0);
+    TEST_ASSERT_EQ(enemy_table[1].drop_chance, 30);
+
+    /* Imp (index 13): no drop */
+    TEST_ASSERT_EQ(enemy_table[13].drop_item_id, -1);
+    TEST_ASSERT_EQ(enemy_table[13].drop_chance, 0);
+
+    /* Fire Dragon (index 7): item 4, 50% */
+    TEST_ASSERT_EQ(enemy_table[7].drop_item_id, 4);
+    TEST_ASSERT_EQ(enemy_table[7].drop_chance, 50);
+}
+
 /* ── Main ────────────────────────────────────────────── */
 int main(void) {
     printf("=== Battle Tests ===\n");
@@ -122,6 +198,10 @@ int main(void) {
     TEST_RUN(test_spell_element_damage);
     TEST_RUN(test_defend_reduction);
     TEST_RUN(test_minimum_damage);
+    TEST_RUN(test_mp_enough);
+    TEST_RUN(test_mp_insufficient);
+    TEST_RUN(test_mp_deduction_amounts);
+    TEST_RUN(test_enemy_drop_fields);
 
     TEST_SUMMARY();
 }

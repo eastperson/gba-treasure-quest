@@ -53,6 +53,8 @@ typedef struct {
     uint8_t sprite_id;
     uint8_t weakness;    /* Element enum — takes 1.5x damage from this */
     uint8_t resistance;  /* Element enum — takes 0.5x damage from this */
+    int8_t  drop_item_id;  /* item id to drop, -1 = no drop */
+    uint8_t drop_chance;   /* drop probability 0-100 percent */
 } EnemyData;
 
 /* ── Spell Data ───────────────────────────────────────── */

@@ -118,6 +118,7 @@ test:
 	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_inventory.c -o build/test/test_inventory && ./build/test/test_inventory
 	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_battle.c -o build/test/test_battle && ./build/test/test_battle
 	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_save.c -o build/test/test_save && ./build/test/test_save
+	gcc -Iinclude -Itests -DPLATFORM_TEST -Wall -Wno-unused-function tests/test_party.c -o build/test/test_party && ./build/test/test_party
 	@echo "=== All tests complete ==="
 
 # ============================================================

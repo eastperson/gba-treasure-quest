@@ -646,23 +646,7 @@ void state_world_render(GameContext *ctx) {
     }
 }
 
-/* ── Item Drop Table (by enemy sprite_id 16-25 → item_id, chance%) ── */
-typedef struct { uint8_t item_id; uint8_t chance; } DropEntry;
-#define DROP_TABLE_BASE 16
-#define DROP_TABLE_COUNT 10
-
-static const DropEntry enemy_drops[DROP_TABLE_COUNT] = {
-    /* sprite 16: Slime   */ { 0, 30 },  /* Potion 30% */
-    /* sprite 17: Goblin  */ { 0, 25 },  /* Potion 25% */
-    /* sprite 18: Scorpion*/ { 3, 20 },  /* Antidote 20% */
-    /* sprite 19: Fire Bat*/ { 2, 20 },  /* Ether 20% */
-    /* sprite 20: Ice Gol */ { 1, 15 },  /* Hi-Potion 15% */
-    /* sprite 21: Wraith  */ { 2, 20 },  /* Ether 20% */
-    /* sprite 22: Temple G*/ { 5, 10 },  /* Skeleton Key 10% */
-    /* sprite 23: FDragon */ { 4, 40 },  /* Bomb 40% */
-    /* sprite 24: Kraken  */ { 1, 50 },  /* Hi-Potion 50% */
-    /* sprite 25: Sky Lord*/ { 5, 40 },  /* Skeleton Key 40% */
-};
+/* Drop tables are now embedded in EnemyData (drop_item_id, drop_chance) */
 
 /* ── Battle ────────────────────────────────────────────── */
 void state_battle_update(GameContext *ctx) {
@@ -682,27 +666,24 @@ void state_battle_update(GameContext *ctx) {
                 hero->exp += g_battle.enemy.exp_reward;
                 ctx->party.gold += g_battle.enemy.gold_reward;
 
-                /* Item drop check */
+                /* Item drop check (uses EnemyData embedded drop fields) */
                 ctx->drop_msg[0] = '\0';
                 ctx->drop_msg_timer = 0;
-                {
-                    int didx = g_battle.enemy.sprite_id - DROP_TABLE_BASE;
-                    if (didx >= 0 && didx < DROP_TABLE_COUNT) {
-                        uint32_t rng = (ctx->frame_count * 1103515245u + 12345u) >> 16;
-                        if ((int)(rng % 100) < enemy_drops[didx].chance) {
-                            int drop_id = enemy_drops[didx].item_id;
-                            if (inventory_add(&ctx->inventory, drop_id, 1)) {
-                                const ItemData *di = inventory_get_item_data(drop_id);
-                                if (di) {
-                                    snprintf(ctx->drop_msg, sizeof(ctx->drop_msg),
-                                             "Got %s!", di->name);
-                                    ctx->drop_msg_timer = 90;
-                                }
-                            } else {
+                if (g_battle.enemy.drop_item_id >= 0 && g_battle.enemy.drop_chance > 0) {
+                    uint32_t rng = (ctx->frame_count * 1103515245u + 12345u) >> 16;
+                    if ((int)(rng % 100) < g_battle.enemy.drop_chance) {
+                        int drop_id = g_battle.enemy.drop_item_id;
+                        if (inventory_add(&ctx->inventory, drop_id, 1)) {
+                            const ItemData *di = inventory_get_item_data(drop_id);
+                            if (di) {
                                 snprintf(ctx->drop_msg, sizeof(ctx->drop_msg),
-                                         "Inventory full!");
+                                         "Got %s!", di->name);
                                 ctx->drop_msg_timer = 90;
                             }
+                        } else {
+                            snprintf(ctx->drop_msg, sizeof(ctx->drop_msg),
+                                     "Inventory full!");
+                            ctx->drop_msg_timer = 90;
                         }
                     }
                 }
