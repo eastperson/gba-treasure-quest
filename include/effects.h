@@ -33,7 +33,7 @@ typedef struct {
     bool       active;
 } Effect;
 
-#define MAX_EFFECTS 8
+#define MAX_EFFECTS 32
 
 /* ── Functions ────────────────────────────────────────── */
 void fx_init(void);

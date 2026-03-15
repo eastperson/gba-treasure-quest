@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "game.h"
+#include "map.h"
 
 /* ── NPC Types ─────────────────────────────────────────── */
 typedef enum {
@@ -34,7 +35,7 @@ typedef struct {
 
 /* ── Functions ─────────────────────────────────────────── */
 void     npc_init_map(uint8_t map_id);
-void     npc_update(uint32_t frame_count);
+void     npc_update(uint32_t frame_count, const MapData *map);
 void     npc_draw(int16_t cam_x, int16_t cam_y);
 NPCData *npc_check_interaction(int16_t player_x, int16_t player_y, uint8_t direction);
 bool     npc_is_at(int16_t x, int16_t y);

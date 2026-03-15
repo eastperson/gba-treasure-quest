@@ -39,7 +39,8 @@ void game_init(GameContext *ctx) {
 
     /* Default starting character */
     Character *hero = &ctx->party.members[0];
-    strncpy(hero->name, "Hero", MAX_NAME_LEN);
+    strncpy(hero->name, "Hero", MAX_NAME_LEN - 1);
+    hero->name[MAX_NAME_LEN - 1] = '\0';
     hero->hp      = 30;
     hero->max_hp  = 30;
     hero->mp      = 10;
@@ -416,7 +417,7 @@ void state_world_update(GameContext *ctx) {
     }
 
     /* NPC update (wander behavior) */
-    npc_update(ctx->frame_count);
+    npc_update(ctx->frame_count, &g_map);
 
     /* NPC interaction on A button */
     uint16_t pressed = platform_keys_pressed();
@@ -690,14 +691,28 @@ void state_battle_update(GameContext *ctx) {
                         uint32_t rng = (ctx->frame_count * 1103515245u + 12345u) >> 16;
                         if ((int)(rng % 100) < enemy_drops[didx].chance) {
                             int drop_id = enemy_drops[didx].item_id;
-                            inventory_add(&ctx->inventory, drop_id, 1);
-                            const ItemData *di = inventory_get_item_data(drop_id);
-                            if (di) {
+                            if (inventory_add(&ctx->inventory, drop_id, 1)) {
+                                const ItemData *di = inventory_get_item_data(drop_id);
+                                if (di) {
+                                    snprintf(ctx->drop_msg, sizeof(ctx->drop_msg),
+                                             "Got %s!", di->name);
+                                    ctx->drop_msg_timer = 90;
+                                }
+                            } else {
                                 snprintf(ctx->drop_msg, sizeof(ctx->drop_msg),
-                                         "Got %s!", di->name);
+                                         "Inventory full!");
                                 ctx->drop_msg_timer = 90;
                             }
                         }
+                    }
+                }
+
+                /* Treasure auto-collect on boss defeat */
+                if (g_battle.enemy.sprite_id >= 23 &&
+                    g_battle.enemy.sprite_id <= 25) {
+                    treasure_collect(ctx->current_island, ctx);
+                    if (treasure_check_complete(ctx)) {
+                        ctx->victory = true;
                     }
                 }
 

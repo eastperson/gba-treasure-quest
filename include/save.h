@@ -8,7 +8,7 @@
 
 /* ── Constants ────────────────────────────────────────── */
 #define MAX_SAVE_SLOTS  3
-#define SAVE_MAGIC      0x5451  /* "TQ" */
+#define SAVE_MAGIC      0x5452  /* "TR" — v2: added inventory+quest_flags */
 
 /* ── Save Slot ────────────────────────────────────────── */
 typedef struct {
@@ -19,6 +19,8 @@ typedef struct {
     uint8_t     current_island;
     uint8_t     treasures_found;
     uint32_t    play_time;      /* frame_count */
+    Inventory   inventory;
+    uint8_t     quest_flags[8];
 } SaveSlot;
 
 /* ── Save Data (all slots packed together) ────────────── */

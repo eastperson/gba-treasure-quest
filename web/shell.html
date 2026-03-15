@@ -64,14 +64,14 @@ canvas#canvas {
 /* D-Pad */
 #dpad {
     display: grid;
-    grid-template-columns: 52px 52px 52px;
-    grid-template-rows: 52px 52px 52px;
+    grid-template-columns: clamp(40px, 8vw, 60px) clamp(40px, 8vw, 60px) clamp(40px, 8vw, 60px);
+    grid-template-rows: clamp(40px, 8vw, 60px) clamp(40px, 8vw, 60px) clamp(40px, 8vw, 60px);
     gap: 2px;
 }
 
 .dpad-btn {
-    width: 52px;
-    height: 52px;
+    width: clamp(40px, 8vw, 60px);
+    height: clamp(40px, 8vw, 60px);
     border: none;
     border-radius: 8px;
     background: rgba(255,255,255,0.12);
@@ -297,6 +297,9 @@ document.addEventListener('click', function() {
         if (mask && Module._web_key_up) {
             Module._web_key_up(mask);
         }
+        /* Re-focus canvas to restore keyboard input */
+        var c = document.getElementById('canvas');
+        if (c) c.focus();
     }
 
     buttons.forEach(function(btn) {

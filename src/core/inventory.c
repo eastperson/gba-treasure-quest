@@ -17,7 +17,7 @@ static const ItemData g_item_db[ITEM_DB_COUNT] = {
     {  1, "Hi-Potion",      ITEM_HI_POTION,   50,   150, "Restores 50 HP"     },
     {  2, "Ether",          ITEM_ETHER,       10,    80, "Restores 10 MP"     },
     {  3, "Antidote",       ITEM_ANTIDOTE,     0,    30, "Cures poison"       },
-    {  4, "Bomb",           ITEM_BOMB,        20,   100, "Deals 20 damage"    },
+    {  4, "Bomb",           ITEM_BOMB,        20,    50, "Deals 20 damage"    },
     {  5, "Skeleton Key",   ITEM_KEY,          0,   200, "Unlocks locked doors"},
     {  6, "Coral Crown",    ITEM_TREASURE,     0,     0, "Crown of the sea king"  },
     {  7, "Emerald Blade",  ITEM_TREASURE,     0,     0, "Sword of forest guardian"},
@@ -136,7 +136,12 @@ bool inventory_equip(Inventory *inv, Character *ch, int slot_index) {
 
     /* Determine if weapon (13-15) or armor (16-18) */
     if (item_id >= 13 && item_id <= 15) {
-        /* Weapon — unequip old weapon first */
+        /* Weapon — check if inventory has room for old weapon before swap */
+        if (ch->weapon_id >= 0 && inv->count >= MAX_INVENTORY) {
+            /* Inventory full — can't unequip old weapon to make room */
+            return false;
+        }
+        /* Unequip old weapon first */
         if (ch->weapon_id >= 0) {
             const ItemData *old = inventory_get_item_data(ch->weapon_id);
             if (old) {
@@ -150,7 +155,12 @@ bool inventory_equip(Inventory *inv, Character *ch, int slot_index) {
         inventory_remove(inv, slot_index, 1);
         return true;
     } else if (item_id >= 16 && item_id <= 18) {
-        /* Armor — unequip old armor first */
+        /* Armor — check if inventory has room for old armor before swap */
+        if (ch->armor_id >= 0 && inv->count >= MAX_INVENTORY) {
+            /* Inventory full — can't unequip old armor to make room */
+            return false;
+        }
+        /* Unequip old armor first */
         if (ch->armor_id >= 0) {
             const ItemData *old = inventory_get_item_data(ch->armor_id);
             if (old) {

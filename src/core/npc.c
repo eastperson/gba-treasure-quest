@@ -3,6 +3,7 @@
  * Platform-independent: uses platform.h functions only.
  */
 #include "npc.h"
+#include "map.h"
 #include "platform.h"
 #include "tiledata.h"
 #include <string.h>
@@ -94,7 +95,7 @@ void npc_init_map(uint8_t map_id) {
 }
 
 /* ── Update: simple wander behavior ────────────────────── */
-void npc_update(uint32_t frame_count) {
+void npc_update(uint32_t frame_count, const MapData *map) {
     for (int i = 0; i < g_npc_count; i++) {
         NPCData *npc = &g_npcs[i];
         if (!npc->active) continue;
@@ -113,10 +114,11 @@ void npc_update(uint32_t frame_count) {
                 default: break; /* stay put */
             }
 
-            /* Basic bounds check: don't wander off map (stay within 2..28) */
+            /* Bounds + walkability check: don't wander into walls */
             int16_t nx = npc->x + dx;
             int16_t ny = npc->y + dy;
-            if (nx >= 2 && nx <= 28 && ny >= 2 && ny <= 18) {
+            if (nx >= 2 && nx <= 28 && ny >= 2 && ny <= 18 &&
+                (!map || map_is_walkable(map, nx, ny))) {
                 npc->x = nx;
                 npc->y = ny;
             }

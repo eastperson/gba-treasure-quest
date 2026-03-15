@@ -38,6 +38,8 @@ bool save_write(int slot, GameContext *ctx) {
     s->current_island = ctx->current_island;
     s->treasures_found = ctx->treasures_found;
     s->play_time      = ctx->frame_count;
+    s->inventory      = ctx->inventory;
+    memcpy(s->quest_flags, ctx->quest_flags, sizeof(s->quest_flags));
 
     return platform_save(&g_save_data, sizeof(SaveData));
 }
@@ -61,6 +63,8 @@ bool save_read(int slot, GameContext *ctx) {
     ctx->current_island = s->current_island;
     ctx->treasures_found = s->treasures_found;
     ctx->frame_count    = s->play_time;
+    ctx->inventory      = s->inventory;
+    memcpy(ctx->quest_flags, s->quest_flags, sizeof(ctx->quest_flags));
 
     return true;
 }

@@ -15,7 +15,7 @@ static const LevelUpBonus g_level_bonuses[3] = {
     /* moderate: */
     {            5,  3,   2,  1,  1,  1 },
     /* slow:     */
-    {            3,  2,   1,  1,  1,  0 },
+    {            5,  2,   1,  1,  1,  0 },
 };
 
 /* ── Helpers ─────────────────────────────────────────── */

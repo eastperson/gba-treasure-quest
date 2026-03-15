@@ -337,7 +337,7 @@ void battle_update(BattleContext *bc, Character *hero) {
                     bc->state = BATTLE_ENEMY_TURN;
                     bc->turn_timer = 0;
                 } else {
-                    int dmg = sp->power + hero->atk / 2 - bc->enemy.def / 2;
+                    int dmg = sp->power + hero->atk / 3 - bc->enemy.def / 3;
                     int variance = (int)(battle_rand() % 5) - 2;
                     dmg += variance;
                     if (dmg < 1) dmg = 1;
@@ -601,7 +601,7 @@ void battle_update(BattleContext *bc, Character *hero) {
                 }
 
                 if (bc->player_defending) {
-                    dmg /= 2;
+                    dmg = dmg * 35 / 100;  /* 65% damage reduction */
                     if (dmg < 1) dmg = 1;
                 }
                 hero->hp -= (int16_t)dmg;
