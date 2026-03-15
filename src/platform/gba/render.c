@@ -160,40 +160,100 @@ void platform_draw_tile(int x, int y, int tile_id, int palette) {
     }
 }
 
+/* ── 16x16 2bpp sprite helper (GBA) ─────────────────── */
+static void draw_sprite_16x16_gba(int x, int y, const u8 *data,
+                                   const u16 colors[][3], int scale,
+                                   bool flip_h) {
+    for (int dy = 0; dy < 16; dy++) {
+        const u8 *row_bytes = &data[dy * 4];
+        u16 outline = colors[dy][0];
+        u16 main_c  = colors[dy][1];
+        u16 accent  = colors[dy][2];
+        for (int dx = 0; dx < 16; dx++) {
+            int sx = flip_h ? (15 - dx) : dx;
+            int byte_idx = sx / 4;
+            int bit_shift = 6 - (sx % 4) * 2;
+            int pixel = (row_bytes[byte_idx] >> bit_shift) & 0x03;
+            if (pixel == 0) continue;
+            u16 c;
+            if      (pixel == 1) c = outline;
+            else if (pixel == 2) c = main_c;
+            else                 c = accent;
+            for (int sy = 0; sy < scale; sy++)
+                for (int sxx = 0; sxx < scale; sxx++)
+                    m3_plot(x + dx * scale + sxx, y + dy * scale + sy, c);
+        }
+    }
+}
+
 void platform_draw_sprite(int x, int y, int sprite_id,
                           int palette, bool flip_h) {
     (void)palette;
-    const u8 *pat;
-    const u16 *row_colors = NULL;
-    u16 fallback = 0x7FFF;
 
     if (sprite_id <= 7) {
         int dir = sprite_id / 2;
         int frame = sprite_id % 2;
         if (dir > 3) dir = 0;
-        pat = SPRITE_PLAYER[dir][frame];
-        row_colors = PLAYER_ROW_COLORS;
-    } else if (sprite_id == 8) {
-        pat = SPRITE_NPC;
-        row_colors = NPC_ROW_COLORS;
-    } else if (sprite_id >= 10 && sprite_id < 10 + COLOR_ENEMY_COLORS_COUNT) {
+        draw_sprite_16x16_gba(x - 4, y - 8,
+                              SPRITE16_PLAYER[dir][frame],
+                              PLAYER16_ROW_COLORS, 1, flip_h);
+        return;
+    }
+    if (sprite_id == 8) {
+        draw_sprite_16x16_gba(x - 4, y - 8,
+                              SPRITE16_NPC,
+                              NPC16_ROW_COLORS, 1, flip_h);
+        return;
+    }
+    if (sprite_id >= 10 && sprite_id < 10 + COLOR_ENEMY_COLORS_COUNT) {
         int idx = sprite_id - 10;
-        pat = SPRITE_ENEMIES[idx];
-        row_colors = ENEMY_ROW_COLORS[idx];
-    } else {
-        pat = SPRITE_NPC;
-        row_colors = NPC_ROW_COLORS;
+        draw_sprite_16x16_gba(x - 4, y - 8,
+                              SPRITE16_ENEMIES[idx],
+                              ENEMY16_ROW_COLORS[idx], 1, flip_h);
+        return;
     }
 
-    for (int dy = 0; dy < 8; dy++) {
-        u8 row = pat[dy];
-        u16 color = row_colors ? row_colors[dy] : fallback;
-        for (int dx = 0; dx < 8; dx++) {
-            int sx = flip_h ? (7 - dx) : dx;
-            if (row & (0x80 >> sx)) {
-                m3_plot(x + dx, y + dy, color);
+    /* Fallback */
+    {
+        const u8 *pat = SPRITE_NPC;
+        const u16 *row_colors = NPC_ROW_COLORS;
+        for (int dy = 0; dy < 8; dy++) {
+            u8 row = pat[dy];
+            u16 color = row_colors[dy];
+            for (int dx = 0; dx < 8; dx++) {
+                int sx = flip_h ? (7 - dx) : dx;
+                if (row & (0x80 >> sx)) {
+                    m3_plot(x + dx, y + dy, color);
+                }
             }
         }
+    }
+}
+
+void platform_draw_sprite_scaled(int x, int y, int sprite_id,
+                                  int palette, bool flip_h, int scale) {
+    (void)palette;
+    if (scale < 1) scale = 1;
+
+    if (sprite_id >= 10 && sprite_id < 10 + COLOR_ENEMY_COLORS_COUNT) {
+        int idx = sprite_id - 10;
+        draw_sprite_16x16_gba(x, y, SPRITE16_ENEMIES[idx],
+                              ENEMY16_ROW_COLORS[idx], scale, flip_h);
+        return;
+    }
+    /* Player/NPC at scale */
+    if (sprite_id <= 7) {
+        int dir = sprite_id / 2;
+        int frame = sprite_id % 2;
+        if (dir > 3) dir = 0;
+        draw_sprite_16x16_gba(x, y, SPRITE16_PLAYER[dir][frame],
+                              PLAYER16_ROW_COLORS, scale, flip_h);
+        return;
+    }
+    if (sprite_id == 8) {
+        draw_sprite_16x16_gba(x, y, SPRITE16_NPC,
+                              NPC16_ROW_COLORS, scale, flip_h);
+        return;
     }
 }
 

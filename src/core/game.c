@@ -354,30 +354,58 @@ void state_title_render(GameContext *ctx) {
     }
 
     /* Credits */
-    platform_draw_text(56, 132, "Sprint 21 Edition", 0x294A);
+    platform_draw_text(56, 132, "Sprint 22 Edition", 0x294A);
 }
 
 /* ── World / Overworld ─────────────────────────────────── */
 void state_world_update(GameContext *ctx) {
     uint16_t keys = platform_keys_held();
-    int16_t new_x = ctx->pos.x;
-    int16_t new_y = ctx->pos.y;
 
-    if (keys & KEY_UP)    { new_y--; ctx->pos.direction = 1; }
-    if (keys & KEY_DOWN)  { new_y++; ctx->pos.direction = 0; }
-    if (keys & KEY_LEFT)  { new_x--; ctx->pos.direction = 2; }
-    if (keys & KEY_RIGHT) { new_x++; ctx->pos.direction = 3; }
+    /* ── Smooth tile movement (interpolate over MOVE_FRAMES) ── */
+    if (ctx->is_moving) {
+        /* Continue interpolation */
+        ctx->move_timer++;
+        int dx = ctx->move_target_x - ctx->pos.x;
+        int dy = ctx->move_target_y - ctx->pos.y;
+        ctx->move_ox = (int8_t)((dx * TILE_PX * ctx->move_timer) / MOVE_FRAMES);
+        ctx->move_oy = (int8_t)((dy * TILE_PX * ctx->move_timer) / MOVE_FRAMES);
 
-    /* Collision check: map tiles + NPC positions */
-    if (map_is_walkable(&g_map, new_x, new_y) && !npc_is_at(new_x, new_y)) {
-        ctx->pos.x = new_x;
-        ctx->pos.y = new_y;
+        if (ctx->move_timer >= MOVE_FRAMES) {
+            /* Arrive at target tile */
+            ctx->pos.x = ctx->move_target_x;
+            ctx->pos.y = ctx->move_target_y;
+            ctx->move_ox = 0;
+            ctx->move_oy = 0;
+            ctx->is_moving = false;
+            ctx->move_timer = 0;
+        }
+    } else {
+        /* Accept new movement input */
+        int16_t new_x = ctx->pos.x;
+        int16_t new_y = ctx->pos.y;
+
+        if (keys & KEY_UP)    { new_y--; ctx->pos.direction = 1; }
+        else if (keys & KEY_DOWN)  { new_y++; ctx->pos.direction = 0; }
+        else if (keys & KEY_LEFT)  { new_x--; ctx->pos.direction = 2; }
+        else if (keys & KEY_RIGHT) { new_x++; ctx->pos.direction = 3; }
+
+        if ((new_x != ctx->pos.x || new_y != ctx->pos.y) &&
+            map_is_walkable(&g_map, new_x, new_y) &&
+            !npc_is_at(new_x, new_y)) {
+            /* Start smooth movement to target tile */
+            ctx->move_target_x = new_x;
+            ctx->move_target_y = new_y;
+            ctx->is_moving = true;
+            ctx->move_timer = 0;
+            ctx->move_ox = 0;
+            ctx->move_oy = 0;
+        }
     }
 
     /* Update sprite animation direction and play/stop state */
     {
-        bool moving = (new_x != ctx->pos.x || new_y != ctx->pos.y)
-                      || (keys & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT));
+        bool moving = ctx->is_moving ||
+                      (keys & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT));
         sprite_anim_set_dir(&g_player_anim, ctx->pos.direction);
         if (moving) {
             sprite_anim_play(&g_player_anim);
@@ -471,14 +499,14 @@ void state_world_update(GameContext *ctx) {
         }
     }
 
-    /* Random encounter check — 5% chance per step */
+    /* Random encounter check — 2% chance per step */
     {
         /* Check if player moved this frame */
         static int16_t prev_x = -1, prev_y = -1;
         if ((ctx->pos.x != prev_x || ctx->pos.y != prev_y)
             && prev_x >= 0) {
             uint32_t rng = (ctx->frame_count * 1103515245u + 12345u) & 0x7FFFFFFFu;
-            if ((rng % 100) < 5) {
+            if ((rng % 100) < 2) {
                 /* Pick island-appropriate enemy */
                 int eid = battle_get_random_enemy_for_island(
                               ctx->current_island, rng >> 8);
@@ -508,13 +536,15 @@ void state_world_update(GameContext *ctx) {
 void state_world_render(GameContext *ctx) {
     platform_clear(0x0000);
 
-    /* Camera follows player, centered on screen */
-    int16_t cam_x = ctx->pos.x * 8 - SCREEN_W / 2 + 4;
-    int16_t cam_y = ctx->pos.y * 8 - SCREEN_H / 2 + 4;
+    /* Camera follows player with smooth offset, centered on screen */
+    int player_px = ctx->pos.x * TILE_PX + ctx->move_ox;
+    int player_py = ctx->pos.y * TILE_PX + ctx->move_oy;
+    int16_t cam_x = player_px - SCREEN_W / 2 + 4;
+    int16_t cam_y = player_py - SCREEN_H / 2 + 4;
 
     /* Clamp camera to map bounds */
-    int16_t max_cam_x = g_map.width * 8 - SCREEN_W;
-    int16_t max_cam_y = g_map.height * 8 - SCREEN_H;
+    int16_t max_cam_x = g_map.width * TILE_PX - SCREEN_W;
+    int16_t max_cam_y = g_map.height * TILE_PX - SCREEN_H;
     if (cam_x < 0) cam_x = 0;
     if (cam_y < 0) cam_y = 0;
     if (cam_x > max_cam_x) cam_x = max_cam_x;
@@ -526,10 +556,10 @@ void state_world_render(GameContext *ctx) {
     /* Draw NPCs */
     npc_draw(cam_x, cam_y);
 
-    /* Draw player sprite (using animation system) */
+    /* Draw player sprite (smooth position using sub-pixel offset) */
     platform_draw_sprite(
-        ctx->pos.x * 8 - cam_x,
-        ctx->pos.y * 8 - cam_y,
+        player_px - cam_x,
+        player_py - cam_y,
         sprite_anim_get_frame(&g_player_anim),
         0,
         ctx->pos.direction == 2 /* flip if facing left */

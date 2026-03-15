@@ -138,13 +138,8 @@ void npc_draw(int16_t cam_x, int16_t cam_y) {
             continue;
         }
 
-        /* Draw NPC as a colored 8x8 block */
-        uint16_t color = npc_colors[npc->type];
-        platform_draw_rect(screen_x, screen_y, 8, 8, color);
-
-        /* Draw a small marker in center to distinguish from tiles */
-        uint16_t marker = 0x0000; /* black dot */
-        platform_draw_rect(screen_x + 3, screen_y + 3, 2, 2, marker);
+        /* Draw NPC using proper sprite */
+        platform_draw_sprite(screen_x, screen_y, 8, 0, false);
     }
 }
 

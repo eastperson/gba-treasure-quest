@@ -23,6 +23,7 @@ void platform_frame_end(void);   /* vsync / present */
 void platform_clear(uint16_t color);
 void platform_draw_tile(int x, int y, int tile_id, int palette);
 void platform_draw_sprite(int x, int y, int sprite_id, int palette, bool flip_h);
+void platform_draw_sprite_scaled(int x, int y, int sprite_id, int palette, bool flip_h, int scale);
 void platform_draw_rect(int x, int y, int w, int h, uint16_t color);
 void platform_draw_text(int x, int y, const char *text, uint16_t color);
 

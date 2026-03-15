@@ -104,7 +104,19 @@ typedef struct {
     char        drop_msg[48];     /* item drop message after battle */
     uint8_t     drop_msg_timer;   /* frames remaining to show drop message */
     uint8_t     intro_page;       /* current intro story page (0-based) */
+
+    /* Smooth movement interpolation */
+    int8_t      move_ox;          /* pixel offset X during movement (-8..+8) */
+    int8_t      move_oy;          /* pixel offset Y during movement (-8..+8) */
+    int16_t     move_target_x;    /* target tile X */
+    int16_t     move_target_y;    /* target tile Y */
+    uint8_t     move_timer;       /* frames into current movement (0..MOVE_FRAMES) */
+    bool        is_moving;        /* currently interpolating between tiles */
 } GameContext;
+
+/* ── Movement Constants ───────────────────────────────── */
+#define MOVE_FRAMES   6   /* frames to interpolate one tile (smooth walk) */
+#define TILE_PX       8   /* pixels per tile */
 
 /* ── Intro Screen ─────────────────────────────────────── */
 #define INTRO_PAGES  4

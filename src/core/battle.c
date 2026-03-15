@@ -678,43 +678,86 @@ int battle_get_random_enemy_for_island(int island_id, uint32_t rng) {
 void battle_render(BattleContext *bc, Character *hero) {
     platform_clear(0x1084);  /* dark blue-gray background */
 
-    /* ── Enemy sprite (top center) ────────────────────── */
-    platform_draw_sprite(112, 20, bc->enemy.sprite_id, 0, false);
+    /* ── Battle arena decorative border ──────────────── */
+    platform_draw_rect(0, 0, 240, 1, 0x294A);
+    platform_draw_rect(0, 74, 240, 2, 0x294A);
 
-    /* Enemy HP bar background */
-    platform_draw_rect(80, 48, 80, 10, 0x0000);
-    /* Enemy HP bar fill */
-    if (bc->enemy.max_hp > 0) {
-        int bar_w = (bc->enemy.hp * 76) / bc->enemy.max_hp;
-        if (bar_w < 0) bar_w = 0;
-        platform_draw_rect(82, 50, bar_w, 6, 0x03E0); /* green */
-    }
-
+    /* ── Enemy sprite (scaled 2x, centered in top area) ── */
     {
-        char ehp[24];
-        snprintf(ehp, sizeof(ehp), "%s HP:%d", bc->enemy.name, bc->enemy.hp);
-        platform_draw_text(80, 60, ehp, 0x7FFF);
+        int ex = (240 - 32) / 2;  /* center 32px wide (16*2) */
+        int ey = 6;
+        /* Shadow under enemy */
+        platform_draw_rect(ex + 4, ey + 34, 24, 4, 0x0842);
+        /* Draw enemy at 2x scale */
+        platform_draw_sprite_scaled(ex, ey, bc->enemy.sprite_id, 0, false, 2);
     }
 
-    /* ── Hero stats (bottom left) — show all party members ── */
-    platform_draw_rect(0, 76, 120, 84, 0x0000);
+    /* ── Enemy info bar ─────────────────────────────── */
+    {
+        char ename[24];
+        snprintf(ename, sizeof(ename), "%s", bc->enemy.name);
+        platform_draw_text(4, 46, ename, 0x7FFF);
+
+        /* HP bar with border */
+        platform_draw_rect(4, 55, 104, 12, 0x294A);  /* border */
+        platform_draw_rect(5, 56, 102, 10, 0x0000);  /* bg */
+        if (bc->enemy.max_hp > 0) {
+            int bar_w = (bc->enemy.hp * 100) / bc->enemy.max_hp;
+            if (bar_w < 0) bar_w = 0;
+            /* Color: green > yellow > red based on HP% */
+            uint16_t bar_color;
+            int pct = (bc->enemy.hp * 100) / bc->enemy.max_hp;
+            if (pct > 50)      bar_color = 0x03E0; /* green */
+            else if (pct > 25) bar_color = 0x03FF; /* yellow */
+            else               bar_color = 0x001F; /* red */
+            platform_draw_rect(6, 57, bar_w, 8, bar_color);
+        }
+        char ehp[16];
+        snprintf(ehp, sizeof(ehp), "%d/%d", bc->enemy.hp, bc->enemy.max_hp);
+        platform_draw_text(112, 57, ehp, 0x5294);
+    }
+
+    /* ── Hero stats panel (bottom left) ─────────────── */
+    platform_draw_rect(0, 76, 120, 84, 0x0842);  /* dark panel bg */
+    platform_draw_rect(1, 77, 118, 82, 0x0000);  /* inner bg */
     {
         char line1[32], line2[32];
-        /* Show hero (primary fighter) with full info */
         snprintf(line1, sizeof(line1), "%s Lv%d", hero->name, hero->level);
-        snprintf(line2, sizeof(line2), "HP:%d/%d MP:%d/%d", hero->hp, hero->max_hp, hero->mp, hero->max_mp);
-        platform_draw_text(4, 78, line1, 0x7FFF);
-        platform_draw_text(4, 88, line2, 0x7FFF);
+        platform_draw_text(4, 79, line1, 0x7FFF);
 
-        /* Show other party members' HP (compact) */
+        /* Hero HP bar */
+        platform_draw_rect(4, 89, 112, 8, 0x0842);
+        platform_draw_rect(5, 90, 110, 6, 0x0000);
+        if (hero->max_hp > 0) {
+            int hw = (hero->hp * 108) / hero->max_hp;
+            if (hw < 0) hw = 0;
+            int pct = (hero->hp * 100) / hero->max_hp;
+            uint16_t hc = pct > 50 ? 0x03E0 : pct > 25 ? 0x03FF : 0x001F;
+            platform_draw_rect(6, 91, hw, 4, hc);
+        }
+        snprintf(line2, sizeof(line2), "HP:%d/%d", hero->hp, hero->max_hp);
+        platform_draw_text(4, 99, line2, 0x7FFF);
+
+        /* Hero MP bar */
+        platform_draw_rect(4, 108, 112, 8, 0x0842);
+        platform_draw_rect(5, 109, 110, 6, 0x0000);
+        if (hero->max_mp > 0) {
+            int mw = (hero->mp * 108) / hero->max_mp;
+            if (mw < 0) mw = 0;
+            platform_draw_rect(6, 110, mw, 4, 0x7C00); /* blue */
+        }
+        snprintf(line2, sizeof(line2), "MP:%d/%d", hero->mp, hero->max_mp);
+        platform_draw_text(4, 118, line2, 0x7E10);
+
+        /* Party members compact */
         if (bc->party) {
         for (int pi = 1; pi < bc->party->count && pi < MAX_PARTY_SIZE; pi++) {
             const Character *m = &bc->party->members[pi];
-            int y = 98 + (pi - 1) * 12;
+            int y = 128 + (pi - 1) * 10;
             snprintf(line1, sizeof(line1), "%s HP:%d/%d", m->name, m->hp, m->max_hp);
             platform_draw_text(4, y, line1, 0x5EF7);
         }
-        } /* end if bc->party */
+        }
     }
 
     /* ── Command menu (bottom right) ──────────────────── */
