@@ -151,17 +151,13 @@ void platform_init(void) {
     }
 
 #ifdef PLATFORM_WEB
-    /* Web: use basic renderer (no PRESENTVSYNC — emscripten_set_main_loop
-     * handles frame timing via requestAnimationFrame) */
-    g_renderer = SDL_CreateRenderer(g_window, -1, 0);
+    /* Web: use PRESENTVSYNC — in Emscripten this maps to requestAnimationFrame
+     * mode via SDL_GL_SetSwapInterval(1), which is the correct frame timing. */
+    g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_PRESENTVSYNC);
     if (!g_renderer) {
         printf("SDL_CreateRenderer failed: %s\n", SDL_GetError());
         return;
     }
-    /* Force requestAnimationFrame mode — SDL_CreateRenderer may switch to
-     * setTimeout internally via SDL_GL_SetSwapInterval(0) */
-    SDL_GL_SetSwapInterval(1);
-    emscripten_set_main_loop_timing(EM_TIMING_RAF, 0);
     /* Web: always use ARGB8888 — avoids 16-bit format issues with WebGL */
     g_use_32bit = true;
     g_framebuffer = SDL_CreateTexture(g_renderer,
